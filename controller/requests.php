@@ -23,24 +23,24 @@ try {
     json_error('Database connection unavailable: ' . $e->getMessage(), 503);
 }
 
-// Automatically update past-due approved requests to Overdue
-try {
-    $pdo->exec(
-        "UPDATE borrow_requests
-            SET status = 'Overdue'
-          WHERE status = 'Approved'
-            AND due_date < CURDATE()"
-    );
-} catch (PDOException $e) {
-    error_log('Failed to update overdue requests: ' . $e->getMessage());
-}
-
 $method = $_SERVER['REQUEST_METHOD'];
 $data   = get_request_data();
 $action = $data['action'] ?? $_GET['action'] ?? '';
 
 // ── GET REQUESTS ─────────────────────────────────────────────────────────────
 if ($method === 'GET') {
+    // Keep overdue statuses current when listing requests, not on every write.
+    try {
+        $pdo->exec(
+            "UPDATE borrow_requests
+                SET status = 'Overdue'
+              WHERE status = 'Approved'
+                AND due_date < CURDATE()"
+        );
+    } catch (PDOException $e) {
+        error_log('Failed to update overdue requests: ' . $e->getMessage());
+    }
+
     $user = get_current_user_account($pdo);
 
     $status     = trim((string)($_GET['status'] ?? ''));
@@ -270,13 +270,35 @@ if ($action === 'approve') {
     try {
         $pdo->beginTransaction();
 
-        // Lock row to prevent simultaneous approvals from overselling
-        $lockStmt = $pdo->prepare("SELECT available FROM equipment WHERE id = :id FOR UPDATE");
-        $lockStmt->execute([':id' => $request['equipment_id']]);
-        $lockedItem = $lockStmt->fetch();
+        $requestLockStmt = $pdo->prepare(
+            'SELECT id, equipment_id, quantity, status
+               FROM borrow_requests
+              WHERE id = :id
+              FOR UPDATE'
+        );
+        $requestLockStmt->execute([':id' => $requestId]);
+        $lockedRequest = $requestLockStmt->fetch();
+        if (!$lockedRequest || $lockedRequest['status'] !== 'Pending') {
+            $pdo->rollBack();
+            json_error('Only pending requests can be approved.');
+        }
 
-        $reqQty   = (int)$request['quantity'];
-        $availQty = $lockedItem ? (int)$lockedItem['available'] : 0;
+        // Lock row to prevent simultaneous approvals from overselling
+        $lockStmt = $pdo->prepare(
+            'SELECT name, available, condition_state
+               FROM equipment
+              WHERE id = :id
+              FOR UPDATE'
+        );
+        $lockStmt->execute([':id' => $lockedRequest['equipment_id']]);
+        $lockedItem = $lockStmt->fetch();
+        if (!$lockedItem) {
+            $pdo->rollBack();
+            json_error('Equipment record not found.', 404);
+        }
+
+        $reqQty   = (int)$lockedRequest['quantity'];
+        $availQty = (int)$lockedItem['available'];
 
         if ($availQty < $reqQty) {
             $pdo->rollBack();
@@ -290,13 +312,17 @@ if ($action === 'approve') {
                     condition_out = :cond,
                     reviewed_by   = :reviewer,
                     reviewed_at   = NOW()
-              WHERE id = :id"
+              WHERE id = :id AND status = 'Pending'"
         );
         $updReq->execute([
-            ':cond'     => $request['condition_state'],
+            ':cond'     => $lockedItem['condition_state'],
             ':reviewer' => $currentUser['id'],
             ':id'       => $requestId,
         ]);
+        if ($updReq->rowCount() !== 1) {
+            $pdo->rollBack();
+            json_error('Only pending requests can be approved.');
+        }
 
         // 2. Decrement equipment availability
         $newAvail = $availQty - $reqQty;
@@ -320,16 +346,21 @@ if ($action === 'approve') {
             (int)$request['organization_id'],
             (int)$currentUser['id'],
             '✓',
-            "{$currentUser['name']} approved {$request['equipment_name']}",
+            "{$currentUser['name']} approved {$lockedItem['name']}",
             $requestId,
-            (int)$request['equipment_id']
+            (int)$lockedRequest['equipment_id']
         );
 
         $pdo->commit();
 
         json_response([
-            'success' => true,
-            'message' => 'Request approved.',
+            'success'         => true,
+            'message'         => 'Request approved.',
+            'requestId'       => (string)$requestId,
+            'equipmentId'     => (string)$lockedRequest['equipment_id'],
+            'conditionOut'    => $lockedItem['condition_state'],
+            'available'       => $newAvail,
+            'equipmentStatus' => $newStatus,
         ]);
     } catch (PDOException $e) {
         if ($pdo->inTransaction()) {

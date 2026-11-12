@@ -51,6 +51,8 @@
   let requestFilter = "";
   let memberSuggestionFilter = "";
   let confirmCallback = null;
+  let requestSubmissionInProgress = false;
+  const pendingRequestReviews = new Set();
   const pendingSuggestionApprovals = new Set();
   const categoryIcons = { Tools: "🧰", Events: "🎪", Electronics: "🔌", Garden: "🌱", Sports: "⚽", Other: "📦" };
   const stewardRoles = ["Administrator", "Organization officer", "Custodian"];
@@ -675,6 +677,7 @@
   async function createRequest(event) {
     event.preventDefault();
     const form = event.currentTarget;
+    if (requestSubmissionInProgress) return;
     if (!form.reportValidity()) return;
     const values = new FormData(form);
     const item = data.equipment.find((entry) => String(entry.id) === String(values.get("equipmentId")));
@@ -696,18 +699,48 @@
       email: String(values.get("email")).trim() || activeUser.email
     };
 
-    const res = await apiCall("requests.php?action=create", {
-      method: "POST",
-      body: JSON.stringify(payload)
-    });
+    const submitButton = form.querySelector('button[type="submit"]');
+    const submitLabel = submitButton?.textContent;
+    requestSubmissionInProgress = true;
+    if (submitButton) {
+      submitButton.disabled = true;
+      submitButton.textContent = "Sending…";
+    }
 
-    if (res && res.success) {
-      bootstrap.Modal.getOrCreateInstance(get("borrow-modal")).hide();
-      form.reset();
-      showToast(res.message || "Request sent! We’ll let you know when it’s reviewed.");
-      await syncWithServer();
-    } else {
-      showToast(res?.message || "Check availability, quantity, and dates before sending.", true);
+    try {
+      const res = await apiCall("requests.php?action=create", {
+        method: "POST",
+        body: JSON.stringify(payload)
+      });
+
+      if (res?.success) {
+        data.requests.unshift({
+          id: String(res.id),
+          equipmentId: String(item.id),
+          borrower: activeUser.name,
+          email: activeUser.email,
+          quantity,
+          startDate,
+          dueDate,
+          purpose: payload.purpose,
+          status: "Pending",
+          conditionOut: item.condition,
+          createdAt: offsetDate(0)
+        });
+        persist(data);
+        renderAll();
+        bootstrap.Modal.getOrCreateInstance(get("borrow-modal")).hide();
+        form.reset();
+        showToast(res.message || "Request sent! We’ll let you know when it’s reviewed.");
+      } else {
+        showToast(res?.message || "Check availability, quantity, and dates before sending.", true);
+      }
+    } finally {
+      requestSubmissionInProgress = false;
+      if (submitButton) {
+        submitButton.disabled = false;
+        submitButton.textContent = submitLabel;
+      }
     }
   }
 
@@ -717,17 +750,56 @@
       showToast("You don’t have permission to review borrowing requests.", true);
       return;
     }
-    const actionName = decision === "Approved" ? "approve" : "reject";
-    const res = await apiCall(`requests.php?action=${actionName}`, {
-      method: "POST",
-      body: JSON.stringify({ id })
+    const key = String(id);
+    const request = data.requests.find((item) => String(item.id) === key);
+    if (!request || request.status !== "Pending" || pendingRequestReviews.has(key)) return;
+    pendingRequestReviews.add(key);
+    document.querySelectorAll('[data-action="approve"], [data-action="reject"]').forEach((button) => {
+      if (button.dataset.id === key) button.disabled = true;
     });
 
-    if (res && res.success) {
-      showToast(res.message || (decision === "Approved" ? "Request approved." : "Request declined."));
-      await syncWithServer();
-    } else {
-      showToast(res?.message || `Could not ${decision.toLowerCase()} request.`, true);
+    const actionName = decision === "Approved" ? "approve" : "reject";
+    try {
+      const res = await apiCall(`requests.php?action=${actionName}`, {
+        method: "POST",
+        body: JSON.stringify({ id })
+      });
+
+      if (res?.success) {
+        request.status = decision;
+        if (decision === "Approved") {
+          request.conditionOut = res.conditionOut || itemFor(request)?.condition || "Good";
+          const equipment = itemFor(request);
+          if (equipment) {
+            const available = Number(res.available);
+            if (Number.isFinite(available)) equipment.available = available;
+            equipment.status = res.equipmentStatus || (equipment.available > 0 ? "Available" : "Borrowed");
+          }
+          data.activity.unshift({
+            id: makeId(),
+            icon: "✓",
+            text: `${activeUser.name} approved ${equipment?.name || "equipment"}`,
+            date: offsetDate(0)
+          });
+        } else {
+          data.activity.unshift({
+            id: makeId(),
+            icon: "×",
+            text: `${activeUser.name} declined a borrowing request`,
+            date: offsetDate(0)
+          });
+        }
+        persist(data);
+        renderAll();
+        showToast(res.message || (decision === "Approved" ? "Request approved." : "Request declined."));
+      } else {
+        showToast(res?.message || `Could not ${decision.toLowerCase()} request.`, true);
+      }
+    } finally {
+      pendingRequestReviews.delete(key);
+      document.querySelectorAll('[data-action="approve"], [data-action="reject"]').forEach((button) => {
+        if (button.dataset.id === key) button.disabled = false;
+      });
     }
   }
 
