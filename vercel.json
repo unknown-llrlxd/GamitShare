@@ -11,6 +11,10 @@
       "dest": "/views/auth/login.html"
     },
     {
+      "src": "^/assets/(.*)$",
+      "dest": "/views/assets/$1"
+    },
+    {
       "src": "^/controller/(.+\\.php)$",
       "dest": "/api/index.php"
     },
