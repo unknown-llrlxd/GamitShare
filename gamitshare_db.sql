@@ -308,14 +308,18 @@ CREATE TABLE IF NOT EXISTS equipment_suggestions (
 ) ENGINE=InnoDB;
 
 -- ───────────────────────────────────────────────────────────
---  10. LOGIN ATTEMPTS (rate limiting store)
+--  10. LOGIN ATTEMPTS (audit and rate limiting)
 -- ───────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS login_attempts (
   id           INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  email        VARCHAR(254) NOT NULL DEFAULT '',
+  user_id      INT UNSIGNED NULL,
   ip_address   VARCHAR(45)  NOT NULL,
+  successful   TINYINT(1)   NOT NULL DEFAULT 0,
   attempted_at TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
-  KEY idx_login_attempts_ip_time (ip_address, attempted_at)
+  KEY idx_ip_time (ip_address, attempted_at),
+  KEY idx_attempted_at (attempted_at)
 ) ENGINE=InnoDB;
 
 -- ───────────────────────────────────────────────────────────

@@ -60,29 +60,83 @@ if (session_status() === PHP_SESSION_NONE) {
 
 // 1. Rate Limiting Check (5 attempts / 5 minutes) — DB IP-based with session fallback (M-1)
 $clientIp = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+$recordLoginAttempt = static function (?PDO $pdo, string $ip, string $email, ?int $userId, bool $successful): void {
+    if (!$successful && isset($_SESSION['login_attempts'])) {
+        $_SESSION['login_attempts']++;
+        $_SESSION['last_attempt_time'] = time();
+    }
+    if (!$pdo) {
+        return;
+    }
+
+    try {
+        $stmt = $pdo->prepare(
+            'INSERT INTO login_attempts (ip_address, email, user_id, successful)
+             VALUES (:ip, :email, :user_id, :successful)'
+        );
+        $stmt->execute([
+            ':ip'         => $ip,
+            ':email'      => substr($email, 0, 254),
+            ':user_id'    => $userId,
+            ':successful' => $successful ? 1 : 0,
+        ]);
+    } catch (PDOException $e) {
+        error_log('GamitShare login attempt logging failed: ' . $e->getMessage());
+    }
+};
+
 try {
     $pdoRate = db_connect();
     $pdoRate->exec(
         "CREATE TABLE IF NOT EXISTS login_attempts (
             id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            email VARCHAR(254) NOT NULL DEFAULT '',
+            user_id INT UNSIGNED NULL,
             ip_address VARCHAR(45) NOT NULL,
+            successful TINYINT(1) NOT NULL DEFAULT 0,
             attempted_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            INDEX idx_ip_time (ip_address, attempted_at)
+            INDEX idx_ip_time (ip_address, attempted_at),
+            INDEX idx_attempted_at (attempted_at)
         ) ENGINE=InnoDB"
     );
-    $pdoRate->exec("DELETE FROM login_attempts WHERE attempted_at < DATE_SUB(NOW(), INTERVAL 5 MINUTE)");
+    $columns = $pdoRate->query('SHOW COLUMNS FROM login_attempts')->fetchAll(PDO::FETCH_COLUMN, 0);
+    $missingColumns = [];
+    if (!in_array('email', $columns, true)) {
+        $missingColumns[] = "ADD COLUMN email VARCHAR(254) NOT NULL DEFAULT ''";
+    }
+    if (!in_array('user_id', $columns, true)) {
+        $missingColumns[] = 'ADD COLUMN user_id INT UNSIGNED NULL';
+    }
+    if (!in_array('successful', $columns, true)) {
+        $missingColumns[] = 'ADD COLUMN successful TINYINT(1) NOT NULL DEFAULT 0';
+    }
+    if ($missingColumns) {
+        $pdoRate->exec('ALTER TABLE login_attempts ' . implode(', ', $missingColumns));
+    }
+
+    $indexes = $pdoRate->query('SHOW INDEX FROM login_attempts')->fetchAll(PDO::FETCH_COLUMN, 2);
+    if (!in_array('idx_attempted_at', $indexes, true)) {
+        $pdoRate->exec('ALTER TABLE login_attempts ADD INDEX idx_attempted_at (attempted_at)');
+    }
+
+    $pdoRate->exec("DELETE FROM login_attempts WHERE attempted_at < DATE_SUB(NOW(), INTERVAL 90 DAY)");
     $rateStmt = $pdoRate->prepare(
-        'SELECT COUNT(*) FROM login_attempts WHERE ip_address = :ip AND attempted_at > DATE_SUB(NOW(), INTERVAL 5 MINUTE)'
+        'SELECT COUNT(*) FROM login_attempts
+          WHERE ip_address = :ip
+            AND successful = 0
+            AND attempted_at > DATE_SUB(NOW(), INTERVAL 5 MINUTE)'
     );
     $rateStmt->execute([':ip' => $clientIp]);
     $recentAttempts = (int)$rateStmt->fetchColumn();
 
     if ($recentAttempts >= 5) {
+        $recordLoginAttempt($pdoRate, $clientIp, '', null, false);
         http_response_code(429);
         echo json_encode(['success' => false, 'message' => 'Too many failed attempts. Please try again in 5 minutes.']);
         exit;
     }
 } catch (Throwable $e) {
+    error_log('GamitShare login rate-limit setup failed: ' . $e->getMessage());
     if (!isset($_SESSION['login_attempts'])) {
         $_SESSION['login_attempts'] = 0;
         $_SESSION['last_attempt_time'] = time();
@@ -117,12 +171,14 @@ if (str_contains($contentType, 'application/json')) {
 
 // ── Validate input ─────────────────────────────────────────────────────────
 if ($email === '' || $password === '') {
+    $recordLoginAttempt($pdoRate ?? null, $clientIp, $email, null, false);
     http_response_code(400);
     echo json_encode(['success' => false, 'message' => 'Email and password are required.']);
     exit;
 }
 
 if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+    $recordLoginAttempt($pdoRate ?? null, $clientIp, $email, null, false);
     http_response_code(400);
     echo json_encode(['success' => false, 'message' => 'Please enter a valid email address.']);
     exit;
@@ -146,21 +202,10 @@ try {
     exit;
 }
 
-// Helper to record failed attempt in DB and session
-$recordFailedAttempt = static function(PDO $pdo, string $ip): void {
-    if (isset($_SESSION['login_attempts'])) {
-        $_SESSION['login_attempts']++;
-        $_SESSION['last_attempt_time'] = time();
-    }
-    try {
-        $pdo->prepare('INSERT INTO login_attempts (ip_address) VALUES (:ip)')->execute([':ip' => $ip]);
-    } catch (Throwable $e) {}
-};
-
 // ── Verify credentials ──────────────────────────────────────────────────────
 if (!$user) {
     http_response_code(401);
-    $recordFailedAttempt($pdo, $clientIp);
+    $recordLoginAttempt($pdo, $clientIp, $email, null, false);
     echo json_encode(['success' => false, 'message' => 'Invalid email or password.']);
     exit;
 }
@@ -168,7 +213,7 @@ if (!$user) {
 if (!(bool)$user['is_active']) {
     // Avoid user enumeration (M-3)
     http_response_code(401);
-    $recordFailedAttempt($pdo, $clientIp);
+    $recordLoginAttempt($pdo, $clientIp, $email, (int)$user['id'], false);
     echo json_encode(['success' => false, 'message' => 'Invalid email or password.']);
     exit;
 }
@@ -178,16 +223,13 @@ $computedHash = derive_pbkdf2_hash($password, $user['salt']);
 
 if (!hash_equals($user['password_hash'], $computedHash)) {
     http_response_code(401);
-    $recordFailedAttempt($pdo, $clientIp);
+    $recordLoginAttempt($pdo, $clientIp, $email, (int)$user['id'], false);
     echo json_encode(['success' => false, 'message' => 'Invalid email or password.']);
     exit;
 }
 
-// Clear rate limiting on successful login
+// Clear the session fallback counter; keep the persistent audit history.
 unset($_SESSION['login_attempts'], $_SESSION['last_attempt_time']);
-try {
-    $pdo->prepare('DELETE FROM login_attempts WHERE ip_address = :ip')->execute([':ip' => $clientIp]);
-} catch (Throwable $e) {}
 
 // ── Create a server-side session ────────────────────────────────────────────
 session_regenerate_id(true);
@@ -230,6 +272,9 @@ try {
     echo json_encode(['success' => false, 'message' => 'Could not create a sign-in session. Please try again.']);
     exit;
 }
+
+// Never store the submitted password; only record the sign-in outcome.
+$recordLoginAttempt($pdo, $clientIp, (string)$user['email'], (int)$user['id'], true);
 
 // ── Success ─────────────────────────────────────────────────────────────────
 $isSteward = in_array($user['role'], ['Administrator', 'Organization officer', 'Custodian'], true);

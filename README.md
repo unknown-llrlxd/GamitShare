@@ -41,6 +41,6 @@ The community dashboard is available to administrators, organization officers, a
 
 ## Prototype limitations
 
-The server-backed sign-in and protected API use an HTTP-only session cookie validated against the `user_sessions` table, so the session works across Vercel function instances. Configure `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, and `DB_PASS` in Vercel and import the schema in `gamitshare_db.sql` into TiDB Cloud. The admin dashboard's local demo fallback is for preview only; write operations still require a valid Administrator session.
+The server-backed sign-in and protected API use an HTTP-only session cookie validated against the `user_sessions` table, so the session works across Vercel function instances. Configure `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, and `DB_PASS` in Vercel and import the schema in `gamitshare_db.sql` into TiDB Cloud. Login attempts are recorded in `login_attempts` for 90 days; passwords are never stored. The login controller creates or upgrades this table automatically when its database account has DDL permissions. The admin dashboard's local demo fallback is for preview only; write operations still require a valid Administrator session.
 
 Equipment photos are currently saved to `uploads/equipment` on the application filesystem. Vercel's serverless filesystem is not persistent, so production photo uploads require persistent object storage; without it, add/edit equipment without a photo. The local sign-in page requires a secure browser context (localhost or HTTPS) for Web Crypto.
