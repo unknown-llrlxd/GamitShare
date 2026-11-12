@@ -21,7 +21,6 @@
         <a class="side-link active" href="#home" data-section="home"><span class="side-icon">◫</span>My home</a>
         <a class="side-link" href="#browse" data-section="browse"><span class="side-icon">▣</span>Browse equipment</a>
         <a class="side-link" href="#my-requests" data-section="my-requests"><span class="side-icon">▤</span>My requests<span class="side-count" id="member-request-count">0</span></a>
-        <a class="side-link" href="#my-suggestions" data-section="my-suggestions"><span class="side-icon">🎁</span>My donations<span class="side-count" id="member-suggestion-count">0</span></a>
       </nav>
       <div class="sidebar-footer">
         <div class="side-user"><span class="avatar" id="member-side-avatar">LR</span><span><strong id="member-side-name">Lina Reyes</strong><small>Community member</small></span><button class="sign-out" id="member-account-button" type="button" aria-label="Switch member account">⌄</button></div>
@@ -35,7 +34,7 @@
       </header>
       <div class="content">
         <section class="page-section active" id="section-home">
-          <div class="welcome-row"><div><p class="eyebrow">YOUR COMMUNITY, SHARED</p><h1>Hi, <span id="member-welcome">Lina</span>. What are we making?</h1><p class="subheading">Good things are meant to be shared. Find something for your next idea.</p></div><div class="d-flex align-items-center gap-2"><button class="btn btn-outline-success" data-action="suggest-item"><span class="button-plus">＋</span> Suggest / Donate item</button><button class="btn btn-success" data-navigate="browse"><span class="button-plus">⌕</span> Browse equipment</button></div></div>
+          <div class="welcome-row"><div><p class="eyebrow">YOUR COMMUNITY, SHARED</p><h1>Hi, <span id="member-welcome">Lina</span>. What are we making?</h1><p class="subheading">Good things are meant to be shared. Find something for your next idea.</p></div><button class="btn btn-success" data-navigate="browse"><span class="button-plus">⌕</span> Browse equipment</button></div>
           <div class="member-hero"><div><span class="hero-overline">A LITTLE MORE TOGETHER</span><h2>Borrow a thing.<br><em>Make something happen.</em></h2><p>From garden days to neighborhood get-togethers, we’ve got you.</p><button class="btn btn-light btn-sm" data-navigate="browse">Find what you need <span>→</span></button></div><div class="member-art" aria-hidden="true"><span>🪴</span><span>🧰</span><i>✳</i></div></div>
           <div class="metric-grid member-metrics" id="member-metrics"></div>
           <div class="overview-grid member-overview">
@@ -44,7 +43,7 @@
           </div>
         </section>
         <section class="page-section" id="section-browse">
-          <div class="page-title-row"><div><p class="eyebrow">THE COMMUNITY COLLECTION</p><h1>Find your next thing</h1><p class="subheading">Search the collection. Pick a project. We’ll take care of the rest.</p></div><button class="btn btn-outline-success" data-action="suggest-item"><span class="button-plus">＋</span> Suggest / Donate item</button></div>
+          <div class="page-title-row"><div><p class="eyebrow">THE COMMUNITY COLLECTION</p><h1>Find your next thing</h1><p class="subheading">Search the collection. Pick a project. We’ll take care of the rest.</p></div></div>
           <div class="toolbar card-surface"><label class="search-control"><span>⌕</span><input id="member-search" class="form-control" type="search" placeholder="Try “garden” or “speaker”..." aria-label="Search equipment"></label><select class="form-select" id="member-category" aria-label="Filter equipment category"><option value="">All categories</option></select><select class="form-select" id="member-availability" aria-label="Filter equipment availability"><option value="">Any availability</option><option value="Available">Available now</option><option value="Borrowed">Currently borrowed</option><option value="Reserved">Reserved</option><option value="Under maintenance">Under maintenance</option><option value="Damaged">Damaged</option></select><span class="toolbar-count" id="member-result-count"></span></div>
           <div class="member-equipment-grid" id="member-equipment-grid"></div>
         </section>
@@ -54,12 +53,6 @@
           <div class="card-surface table-surface"><div class="table-responsive"><table class="table align-middle"><thead><tr><th>EQUIPMENT</th><th>DATES</th><th>QUANTITY</th><th>STATUS</th><th>INTENDED USE</th></tr></thead><tbody id="member-requests-table"></tbody></table></div></div>
           <div class="member-care-note"><span>✳</span><div><strong>Thanks for taking care of what we share.</strong><p>A quick return update helps the next neighbor plan their project.</p></div></div>
         </section>
-        <section class="page-section" id="section-my-suggestions">
-          <div class="page-title-row"><div><p class="eyebrow">YOUR COMMUNITY CONTRIBUTIONS</p><h1>My item donations &amp; suggestions</h1><p class="subheading">Track equipment you’ve offered to share with the neighborhood.</p></div><button class="btn btn-success" data-action="suggest-item"><span class="button-plus">＋</span> Suggest / Donate item</button></div>
-          <div class="member-request-tabs" role="tablist" aria-label="Filter my suggestions"><button class="active" type="button" data-member-suggestion-filter="">All contributions</button><button type="button" data-member-suggestion-filter="Pending">Waiting for review</button><button type="button" data-member-suggestion-filter="Approved">Approved</button><button type="button" data-member-suggestion-filter="Rejected">Declined</button></div>
-          <div class="card-surface table-surface"><div class="table-responsive"><table class="table align-middle"><thead><tr><th>ITEM</th><th>CATEGORY</th><th>QTY</th><th>CONDITION</th><th>SUBMITTED</th><th>STATUS</th><th>FEEDBACK / NOTES</th></tr></thead><tbody id="member-suggestions-table"></tbody></table></div></div>
-          <div class="member-care-note"><span>🎁</span><div><strong>Every item helps build a richer community pool.</strong><p>Items reviewed and approved by community stewards are added directly to the catalog for all neighbors to borrow.</p></div></div>
-        </section>
       </div>
       <footer class="workspace-footer"><span>Good things, shared better <span>♥</span></span></footer>
     </main>
@@ -67,81 +60,6 @@
   <div class="toast-container position-fixed bottom-0 end-0 p-3" id="toast-container" aria-live="polite"></div>
   <div class="modal fade" id="borrow-modal" tabindex="-1" aria-labelledby="borrow-modal-title" aria-hidden="true"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"><form id="borrow-form"><div class="modal-header"><div><p class="eyebrow mb-1">A NOTE FOR THE COMMUNITY</p><h2 class="modal-title fs-5" id="borrow-modal-title">What would you like to borrow?</h2></div><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div><div class="modal-body"><div class="row g-3"><div class="col-12"><label class="form-label" for="borrow-equipment">Equipment</label><select class="form-select" id="borrow-equipment" name="equipmentId" required></select></div><div class="col-sm-6"><label class="form-label" for="borrow-quantity">How many?</label><input class="form-control" id="borrow-quantity" name="quantity" type="number" min="1" value="1" required></div><div class="col-sm-6"><label class="form-label" for="borrow-email">Contact email</label><input class="form-control" id="borrow-email" name="email" type="email" required></div><div class="col-12"><label class="form-label" for="borrow-purpose">What are you planning?</label><input class="form-control" id="borrow-purpose" name="purpose" maxlength="120" placeholder="Tell us what you have in mind" required></div><div class="col-sm-6"><label class="form-label" for="borrow-start">Borrowing date</label><input class="form-control" id="borrow-start" name="startDate" type="date" required></div><div class="col-sm-6"><label class="form-label" for="borrow-due">Expected return</label><input class="form-control" id="borrow-due" name="dueDate" type="date" required></div></div></div><div class="modal-footer"><button class="btn btn-outline-secondary" type="button" data-bs-dismiss="modal">Cancel</button><button class="btn btn-success" type="submit">Send request</button></div></form></div></div></div>
   <div class="modal fade" id="account-modal" tabindex="-1" aria-labelledby="account-modal-title" aria-hidden="true"><div class="modal-dialog modal-dialog-centered modal-sm"><div class="modal-content"><div class="modal-header"><div><p class="eyebrow mb-1">YOUR ACCOUNT</p><h2 class="modal-title fs-5" id="account-modal-title">Choose a demo account</h2></div><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div><div class="modal-body"><p class="small text-secondary">Switch between sample accounts. This is a front-end demonstration, not secure sign-in.</p><label class="form-label" for="member-account-select">Account</label><select class="form-select" id="member-account-select"></select><a class="btn btn-link btn-sm px-0 mt-2" href="../auth/login.html">Need an account? Create one</a></div><div class="modal-footer"><button class="btn btn-outline-danger me-auto" id="member-sign-out" type="button">Sign out</button><button class="btn btn-outline-secondary" type="button" data-bs-dismiss="modal">Done</button><button class="btn btn-success" id="switch-member" type="button">Continue</button></div></div></div></div>
-  <div class="modal fade" id="suggest-modal" tabindex="-1" aria-labelledby="suggest-modal-title" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-      <div class="modal-content">
-        <form id="suggest-form">
-          <div class="modal-header">
-            <div>
-              <p class="eyebrow mb-1">COMMUNITY CONTRIBUTION</p>
-              <h2 class="modal-title fs-5" id="suggest-modal-title">Suggest / Donate an Item</h2>
-            </div>
-            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-          </div>
-          <div class="modal-body">
-            <p class="small text-secondary mb-3">Have a tool, gear, or resource you'd like to share with the neighborhood? Submit it here for custodian review before it joins the equipment catalog.</p>
-            <div class="row g-3">
-              <div class="col-12">
-                <label class="form-label" for="suggest-name">Item Name <span class="text-danger">*</span></label>
-                <input class="form-control" id="suggest-name" name="item_name" maxlength="120" placeholder="e.g. Lawn Mower, Folding Canopy, Drill Kit" required>
-              </div>
-              <div class="col-sm-6">
-                <label class="form-label" for="suggest-category">Category <span class="text-danger">*</span></label>
-                <select class="form-select" id="suggest-category" name="category" required>
-                  <option value="Tools">Tools 🧰</option>
-                  <option value="Events">Events 🎪</option>
-                  <option value="Electronics">Electronics 🔌</option>
-                  <option value="Garden">Garden 🌱</option>
-                  <option value="Sports">Sports ⚽</option>
-                  <option value="Other">Other 📦</option>
-                </select>
-              </div>
-              <div class="col-sm-6">
-                <label class="form-label" for="suggest-quantity">Quantity <span class="text-danger">*</span></label>
-                <input class="form-control" id="suggest-quantity" name="quantity" type="number" min="1" value="1" required>
-              </div>
-              <div class="col-12">
-                <label class="form-label" for="suggest-condition">Estimated / Actual Condition <span class="text-danger">*</span></label>
-                <select class="form-select" id="suggest-condition" name="condition_state" required>
-                  <option value="Good" selected>Good — Fully working, clean, and ready to use</option>
-                  <option value="Fair">Fair — Functional with minor cosmetic wear</option>
-                  <option value="Needs repair">Needs repair — Needs simple maintenance/repair</option>
-                  <option value="Damaged">Damaged — Noticeably damaged or missing parts</option>
-                </select>
-              </div>
-              <div class="col-12">
-                <label class="form-label" for="suggest-description">Description</label>
-                <textarea class="form-control" id="suggest-description" name="description" rows="2" maxlength="255" placeholder="Include model info, accessories, or any helpful notes for borrowers..."></textarea>
-              </div>
-              <div class="col-12">
-                <label class="form-label">Photo <span class="text-secondary fw-normal">(optional upload or URL)</span></label>
-                <div class="photo-upload mb-2">
-                  <div class="photo-preview" id="suggest-photo-preview" aria-live="polite">
-                    <span class="photo-preview-empty">No photo</span>
-                  </div>
-                  <div class="photo-upload-controls">
-                    <input class="form-control form-control-sm" id="suggest-photo-file" type="file" accept="image/jpeg,image/png,image/webp">
-                    <div class="d-flex align-items-center gap-2 mt-1">
-                      <button type="button" class="btn btn-outline-danger btn-sm d-none" id="suggest-remove-photo-btn">Remove file</button>
-                      <span class="form-text m-0 small">JPG, PNG or WebP (max 5 MB)</span>
-                    </div>
-                  </div>
-                </div>
-                <div class="input-group input-group-sm">
-                  <span class="input-group-text">Or Image URL</span>
-                  <input type="url" class="form-control" id="suggest-image-url" name="image_url" placeholder="https://example.com/photo.jpg">
-                </div>
-              </div>
-            </div>
-          </div>
-          <div class="modal-footer">
-            <button class="btn btn-outline-secondary" type="button" data-bs-dismiss="modal">Cancel</button>
-            <button class="btn btn-success" type="submit" id="suggest-submit-btn">Submit for Review</button>
-          </div>
-        </form>
-      </div>
-    </div>
-  </div>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

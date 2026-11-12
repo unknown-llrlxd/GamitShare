@@ -273,42 +273,7 @@ CREATE TABLE IF NOT EXISTS equipment_maintenance (
 ) ENGINE=InnoDB;
 
 -- ───────────────────────────────────────────────────────────
---  9. EQUIPMENT SUGGESTIONS / DONATIONS
---     Allows members to suggest or donate items to the community pool,
---     which stewards review and approve before adding to equipment.
--- ───────────────────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS equipment_suggestions (
-  id               INT UNSIGNED    NOT NULL AUTO_INCREMENT,
-  organization_id  INT UNSIGNED    NOT NULL DEFAULT 1,
-  member_id        INT UNSIGNED    NOT NULL,
-  item_name        VARCHAR(120)    NOT NULL,
-  category         VARCHAR(60)     NOT NULL DEFAULT 'Other',
-  description      TEXT,
-  quantity         INT             NOT NULL DEFAULT 1,
-  condition_state  VARCHAR(40)     NOT NULL DEFAULT 'Good',
-  image_url        VARCHAR(2048)   NULL,
-  status           ENUM('Pending', 'Approved', 'Rejected') NOT NULL DEFAULT 'Pending',
-  rejection_reason TEXT            NULL,
-  reviewed_by      INT UNSIGNED    NULL,
-  reviewed_at      DATETIME        NULL,
-  created_at       TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (id),
-  KEY idx_suggestions_org (organization_id),
-  KEY idx_suggestions_member (member_id),
-  KEY idx_suggestions_status (status),
-  CONSTRAINT fk_suggestions_org
-    FOREIGN KEY (organization_id) REFERENCES organizations (id)
-    ON UPDATE CASCADE ON DELETE RESTRICT,
-  CONSTRAINT fk_suggestions_member
-    FOREIGN KEY (member_id) REFERENCES users (id)
-    ON UPDATE CASCADE ON DELETE CASCADE,
-  CONSTRAINT fk_suggestions_reviewer
-    FOREIGN KEY (reviewed_by) REFERENCES users (id)
-    ON UPDATE CASCADE ON DELETE SET NULL
-) ENGINE=InnoDB;
-
--- ───────────────────────────────────────────────────────────
---  10. LOGIN ATTEMPTS (audit and rate limiting)
+--  9. LOGIN ATTEMPTS (audit and rate limiting)
 -- ───────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS login_attempts (
   id           INT UNSIGNED NOT NULL AUTO_INCREMENT,

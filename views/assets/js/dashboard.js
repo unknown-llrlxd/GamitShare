@@ -38,10 +38,6 @@
       { id: "3", name: "Rafi Dela Cruz", email: "rafi.dc@example.org", role: "Custodian", joined: "2025-05-02" },
       { id: "5", name: "Ivo Mercado", email: "ivo.m@example.org", role: "Member", joined: "2025-08-14" }
     ],
-    suggestions: [
-      { id: "1", memberId: "4", memberName: "Lina Reyes", memberEmail: "lina.reyes@example.org", itemName: "Electric pressure washer", category: "Tools", description: "2000 PSI pressure washer with 3 spray nozzles. Great for driveways and porches.", quantity: 1, conditionState: "Good", imageUrl: "", status: "Pending", rejectionReason: "", reviewedBy: null, reviewerName: null, reviewedAt: null, createdAt: offsetDate(-2) },
-      { id: "2", memberId: "5", memberName: "Ivo Mercado", email: "ivo.m@example.org", memberEmail: "ivo.m@example.org", itemName: "Pop-up picnic gazebo", category: "Events", description: "10x10 ft gazebo canopy with carry case.", quantity: 1, conditionState: "Fair", imageUrl: "", status: "Pending", rejectionReason: "", reviewedBy: null, reviewerName: null, reviewedAt: null, createdAt: offsetDate(-1) }
-    ],
     activity: []
   });
 
@@ -49,11 +45,9 @@
   let activeUser;
   let currentSection = isAdminPage ? "overview" : "home";
   let requestFilter = "";
-  let memberSuggestionFilter = "";
   let confirmCallback = null;
   let requestSubmissionInProgress = false;
   const pendingRequestReviews = new Set();
-  const pendingSuggestionApprovals = new Set();
   const categoryIcons = { Tools: "🧰", Events: "🎪", Electronics: "🔌", Garden: "🌱", Sports: "⚽", Other: "📦" };
   const stewardRoles = ["Administrator", "Organization officer", "Custodian"];
   const isAdministrator = () => activeUser?.role === "Administrator";
@@ -69,23 +63,14 @@
   const currentUserRequests = () => data.requests.filter((request) => request.email?.toLowerCase() === activeUser.email?.toLowerCase());
   const itemFor = (request) => data.equipment.find((item) => String(item.id) === String(request.equipmentId));
   const isActiveBorrowing = (request) => ["Approved", "Overdue"].includes(request.status);
-  // Uploaded photos are stored as "uploads/equipment/<file>" (relative to the project root).
+  // Resolve legacy relative image paths; new equipment photos use external URLs.
   const photoSrc = (photo = "") => (!photo || /^(https?:|data:|\/)/i.test(photo)) ? photo : `${API_BASE}/../${photo}`;
-  const PHOTO_MAX_BYTES = 5 * 1024 * 1024;        // server limit (applies to the resized file)
-  const PHOTO_PICK_MAX_BYTES = 20 * 1024 * 1024; // largest original we'll try to resize
-  const PHOTO_MAX_SIDE = 1200;                   // longest side after resizing (px)
-  let pendingPhoto = null;                       // resized Blob waiting to be uploaded
-  let previewUrl = "";
-  let pendingSuggestPhoto = null;
-  let previewSuggestUrl = "";
-  const PHOTO_TYPES = ["image/jpeg", "image/png", "image/webp"];
   const statusClass = (status) => `status-${String(status || "").toLowerCase().replaceAll(" ", "-")}`;
 
   // ── BACKEND API INTEGRATION ─────────────────────────────────────────────────
   async function apiCall(endpoint, options = {}) {
-    const isForm = options.body instanceof FormData;   // let the browser set the multipart boundary
     const headers = {
-      ...(isForm ? {} : { "Content-Type": "application/json" }),
+      "Content-Type": "application/json",
       ...(options.headers || {})
     };
     try {
@@ -106,11 +91,10 @@
 
   async function syncWithServer() {
     try {
-      const [eqRes, reqRes, actRes, sugRes] = await Promise.all([
+      const [eqRes, reqRes, actRes] = await Promise.all([
         apiCall("equipment.php"),
         apiCall(isAdminPage ? "requests.php" : `requests.php?email=${encodeURIComponent(activeUser?.email || "")}`),
-        apiCall("activity.php?limit=12"),
-        apiCall(isAdminPage ? "suggestions.php" : `suggestions.php?email=${encodeURIComponent(activeUser?.email || "")}`)
+        apiCall("activity.php?limit=12")
       ]);
 
       if (eqRes?.success && Array.isArray(eqRes.equipment)) {
@@ -145,27 +129,6 @@
           returnNotes: r.returnNotes,
           returnedAt: r.returnedAt,
           createdAt: r.createdAt
-        }));
-      }
-
-      if (sugRes?.success && Array.isArray(sugRes.suggestions)) {
-        data.suggestions = sugRes.suggestions.map((s) => ({
-          id: String(s.id),
-          memberId: String(s.memberId),
-          memberName: s.memberName,
-          memberEmail: s.memberEmail,
-          itemName: s.itemName,
-          category: s.category,
-          description: s.description || "",
-          quantity: Number(s.quantity),
-          conditionState: s.conditionState || "Good",
-          imageUrl: s.imageUrl || "",
-          status: s.status || "Pending",
-          rejectionReason: s.rejectionReason || "",
-          reviewedBy: s.reviewedBy ? String(s.reviewedBy) : null,
-          reviewerName: s.reviewerName || null,
-          reviewedAt: s.reviewedAt || null,
-          createdAt: s.createdAt
         }));
       }
 
@@ -207,7 +170,7 @@
         throw new Error("Saved GamitShare data is incomplete.");
       }
       if (!Array.isArray(parsed.activity)) parsed.activity = [];
-      if (!Array.isArray(parsed.suggestions)) parsed.suggestions = defaultData().suggestions || [];
+      delete parsed.suggestions;
       return parsed;
     } catch (error) {
       console.error("Could not read GamitShare data.", error);
@@ -313,8 +276,8 @@
 
   function showSection(section, writeHash = true) {
     const availableSections = isAdminPage
-      ? ["overview", "equipment", "requests", "suggestions", "reports", ...(isAdministrator() ? ["members"] : [])]
-      : ["home", "browse", "my-requests", "my-suggestions"];
+      ? ["overview", "equipment", "requests", "reports", ...(isAdministrator() ? ["members"] : [])]
+      : ["home", "browse", "my-requests"];
     if (!availableSections.includes(section)) section = isAdminPage ? "overview" : "home";
     currentSection = section;
     document.querySelectorAll(".page-section").forEach((page) => page.classList.toggle("active", page.id === `section-${section}`));
@@ -334,12 +297,6 @@
     get("side-pending-count").textContent = String(pending);
     get("side-pending-count").classList.toggle("d-none", pending === 0);
 
-    const pendingSuggestions = (data.suggestions || []).filter((s) => s.status === "Pending").length;
-    const sideSugs = get("side-suggestions-count");
-    if (sideSugs) {
-      sideSugs.textContent = String(pendingSuggestions);
-      sideSugs.classList.toggle("d-none", pendingSuggestions === 0);
-    }
   }
 
   function renderAdminOverview() {
@@ -424,72 +381,11 @@
     }).join("") : `<tr><td colspan="5" class="empty-table">Nothing overdue. Thank you, neighbors!</td></tr>`;
   }
 
-  function renderAdminSuggestions() {
-    const table = get("admin-suggestions-table");
-    if (!table) return;
-    const searchInput = get("suggestion-search");
-    const query = (searchInput?.value || "").trim().toLowerCase();
-    const statusFilter = get("suggestion-status")?.value || "";
-
-    const sugs = (data.suggestions || []).filter((s) => {
-      const matchesQuery = !query || `${s.itemName} ${s.category} ${s.description} ${s.memberName} ${s.memberEmail}`.toLowerCase().includes(query);
-      const matchesStatus = !statusFilter || s.status === statusFilter;
-      return matchesQuery && matchesStatus;
-    });
-
-    const pendingCount = (data.suggestions || []).filter((s) => s.status === "Pending").length;
-    const approvedCount = (data.suggestions || []).filter((s) => s.status === "Approved").length;
-    const rejectedCount = (data.suggestions || []).filter((s) => s.status === "Rejected").length;
-    const summaryEl = get("suggestion-summary");
-    if (summaryEl) {
-      summaryEl.innerHTML = [
-        ["#fbf0e2", "#b6804e", pendingCount, "Pending review", "Awaiting decision"],
-        ["#edf4e9", "#1E4D3B", approvedCount, "Approved", "In collection"],
-        ["#fee2e2", "#991b1b", rejectedCount, "Declined", "With feedback"]
-      ].map(([bg, color, count, label, sub]) => `<div class="summary-chip"><span style="background:${bg};color:${color}">${count}</span><span><strong>${escapeHtml(label)}</strong><small>${escapeHtml(sub)}</small></span></div>`).join("");
-    }
-
-    table.innerHTML = sugs.length ? sugs.map((s) => {
-      const catEmoji = categoryIcons[s.category] || "📦";
-      const photo = s.imageUrl ? `<img src="${escapeHtml(photoSrc(s.imageUrl))}" alt="${escapeHtml(s.itemName)}" style="width:34px;height:34px;border-radius:6px;object-fit:cover;" onerror="this.remove()">` : `<span class="item-emoji">${catEmoji}</span>`;
-      const actions = s.status === "Pending"
-        ? `<div class="d-flex justify-content-end gap-1">
-             <button class="btn btn-sm btn-success py-1 px-2" type="button" data-action="approve-suggestion" data-id="${escapeHtml(s.id)}" title="Approve and add to equipment pool">✓ Approve</button>
-             <button class="btn btn-sm btn-outline-danger py-1 px-2" type="button" data-action="reject-suggestion" data-id="${escapeHtml(s.id)}" title="Decline suggestion">✕ Decline</button>
-           </div>`
-        : s.status === "Approved"
-        ? `<span class="badge bg-success-subtle text-success border border-success-subtle">✓ In Inventory</span>`
-        : `<span class="badge bg-danger-subtle text-danger border border-danger-subtle" title="${escapeHtml(s.rejectionReason || 'Declined')}">✕ Declined${s.rejectionReason ? ` (${escapeHtml(s.rejectionReason)})` : ''}</span>`;
-
-      return `<tr>
-        <td>
-          <span class="item-cell">
-            ${photo}
-            <span>
-              <strong>${escapeHtml(s.itemName)}</strong>
-              <small>${escapeHtml(s.category)}${s.description ? ` · ${escapeHtml(s.description)}` : ''}</small>
-            </span>
-          </span>
-        </td>
-        <td>
-          <strong>${escapeHtml(s.memberName)}</strong>
-          <small class="d-block text-secondary">${escapeHtml(s.memberEmail)}</small>
-        </td>
-        <td>${s.quantity}</td>
-        <td><span class="badge bg-light text-dark border">${escapeHtml(s.conditionState)}</span></td>
-        <td>${formatDate(s.createdAt)}</td>
-        <td><span class="status-pill ${statusClass(s.status)}">${escapeHtml(s.status)}</span></td>
-        <td class="text-end">${actions}</td>
-      </tr>`;
-    }).join("") : `<tr><td colspan="7" class="empty-table">${statusFilter ? `No ${statusFilter.toLowerCase()} suggestions found.` : 'No suggestions or donations submitted yet.'}</td></tr>`;
-  }
-
   function renderAdmin() {
     updateAdminNav();
     renderAdminOverview();
     renderAdminEquipment();
     renderAdminRequests();
-    renderAdminSuggestions();
     renderAdminMembers();
     renderReports();
   }
@@ -553,51 +449,10 @@
     get("member-requests-table").innerHTML = requests.length ? requests.map((request) => `<tr><td>${itemCell(itemFor(request))}</td><td>${formatDate(request.startDate)} – ${formatDate(request.dueDate)}<small class="d-block mt-1 text-secondary">Requested ${formatDate(request.createdAt)}</small></td><td>${request.quantity}</td><td><span class="status-pill ${statusClass(request.status)}">${escapeHtml(request.status)}</span></td><td>${escapeHtml(request.purpose)}</td></tr>`).join("") : `<tr><td colspan="5" class="empty-table">No requests here yet. Your next project could be the first.</td></tr>`;
   }
 
-  function renderMemberSuggestions() {
-    const table = get("member-suggestions-table");
-    if (!table) return;
-    const mySugs = (data.suggestions || []).filter((s) => s.memberEmail?.toLowerCase() === activeUser.email?.toLowerCase());
-    const pendingCount = mySugs.filter((s) => s.status === "Pending").length;
-    const countEl = get("member-suggestion-count");
-    if (countEl) countEl.textContent = String(pendingCount);
-
-    const filtered = mySugs.filter((s) => !memberSuggestionFilter || s.status === memberSuggestionFilter)
-      .sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
-
-    table.innerHTML = filtered.length ? filtered.map((s) => {
-      const catEmoji = categoryIcons[s.category] || "📦";
-      const photo = s.imageUrl ? `<img src="${escapeHtml(photoSrc(s.imageUrl))}" alt="${escapeHtml(s.itemName)}" style="width:32px;height:32px;border-radius:6px;object-fit:cover;margin-right:8px;" onerror="this.remove()">` : `<span class="item-emoji me-2">${catEmoji}</span>`;
-      const feedback = s.status === "Approved"
-        ? `<span class="text-success small fw-semibold">✓ Approved and added to community pool!</span>`
-        : s.status === "Rejected"
-        ? `<span class="text-danger small">${escapeHtml(s.rejectionReason || "Declined by custodian.")}</span>`
-        : `<span class="text-secondary small">Under review by community custodians.</span>`;
-
-      return `<tr>
-        <td>
-          <div class="d-flex align-items-center">
-            ${photo}
-            <div>
-              <strong>${escapeHtml(s.itemName)}</strong>
-              ${s.description ? `<small class="d-block text-secondary">${escapeHtml(s.description)}</small>` : ''}
-            </div>
-          </div>
-        </td>
-        <td>${escapeHtml(s.category)}</td>
-        <td>${s.quantity}</td>
-        <td><span class="badge bg-light text-dark border">${escapeHtml(s.conditionState)}</span></td>
-        <td>${formatDate(s.createdAt)}</td>
-        <td><span class="status-pill ${statusClass(s.status)}">${escapeHtml(s.status)}</span></td>
-        <td>${feedback}</td>
-      </tr>`;
-    }).join("") : `<tr><td colspan="7" class="empty-table">No suggestions matching this filter. Have a tool or gear you'd like to share? Click "Suggest / Donate item" above!</td></tr>`;
-  }
-
   function renderMember() {
     renderMemberHome();
     renderMemberBrowse();
     renderMemberRequests();
-    renderMemberSuggestions();
   }
 
   function renderAll() {
@@ -612,56 +467,15 @@
     box.innerHTML = src ? `<img src="${escapeHtml(src)}" alt="Equipment photo preview">` : `<span class="photo-preview-empty">No photo selected</span>`;
   }
 
-  function validatePhotoFile(file) {
-    if (!file) return "";
-    if (!PHOTO_TYPES.includes(file.type)) return "Please choose a JPG, PNG, or WebP image.";
-    if (file.size > PHOTO_PICK_MAX_BYTES) return "That photo is over 20 MB. Please choose a smaller one.";
-    return "";
-  }
-
-  // Shrinks big photos in the browser so uploads are fast and the uploads folder stays small.
-  async function resizePhoto(file) {
-    const url = URL.createObjectURL(file);
-    try {
-      const img = await new Promise((resolve, reject) => {
-        const image = new Image();
-        image.onload = () => resolve(image);
-        image.onerror = () => reject(new Error("Could not read that image."));
-        image.src = url;
-      });
-      const scale = Math.min(1, PHOTO_MAX_SIDE / Math.max(img.naturalWidth, img.naturalHeight));
-      if (scale === 1 && file.size <= 1024 * 1024) return file; // already small enough
-      const canvas = document.createElement("canvas");
-      canvas.width = Math.round(img.naturalWidth * scale);
-      canvas.height = Math.round(img.naturalHeight * scale);
-      const ctx = canvas.getContext("2d");
-      ctx.fillStyle = "#fff";                                    // PNG transparency -> white, not black
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.85));
-      return blob && blob.size < file.size ? blob : file;
-    } finally {
-      URL.revokeObjectURL(url);
-    }
-  }
-
-  function setPhotoState({ src = "", removed = false } = {}) {
-    if (previewUrl) { URL.revokeObjectURL(previewUrl); previewUrl = ""; }
-    get("edit-remove-photo").value = removed ? "1" : "0";
-    showPhotoPreview(src);
-    get("remove-photo-btn").classList.toggle("d-none", !src);
-  }
-
   function openEquipmentForm(item) {
     if (activeUser.role !== "Administrator") { showToast("Only administrators can change equipment.", true); return; }
     const form = get("edit-form");
     form.reset();
     const values = item || { id: "", name: "", category: "Tools", quantity: 1, available: 1, emoji: "📦", condition: "Good", status: "Available", description: "", photo: "" };
-    Object.entries({ id: values.id, name: values.name, category: values.category, quantity: values.quantity, available: values.available, emoji: values.emoji || "📦", condition: values.condition, status: values.status, description: values.description, photo: values.photo || "" }).forEach(([name, value]) => { if (form.elements[name]) form.elements[name].value = value ?? ""; });
+    const photoUrl = /^https?:\/\//i.test(values.photo || "") ? values.photo : "";
+    Object.entries({ id: values.id, name: values.name, category: values.category, quantity: values.quantity, available: values.available, emoji: values.emoji || "📦", condition: values.condition, status: values.status, description: values.description, photo: photoUrl }).forEach(([name, value]) => { if (form.elements[name]) form.elements[name].value = value ?? ""; });
     get("edit-modal-title").textContent = item ? "Edit equipment" : "Add equipment";
-    pendingPhoto = null;
-    get("edit-photo-file").value = "";
-    setPhotoState({ src: values.photo ? photoSrc(values.photo) : "" });
+    showPhotoPreview(photoUrl);
     bootstrap.Modal.getOrCreateInstance(get("edit-modal")).show();
   }
 
@@ -862,214 +676,6 @@
     });
   }
 
-  // ── SUGGEST / DONATE MODAL & SUBMISSION ────────────────────────────────────
-  function showSuggestPhotoPreview(src) {
-    const box = get("suggest-photo-preview");
-    if (!box) return;
-    box.innerHTML = src ? `<img src="${escapeHtml(src)}" alt="Photo preview" style="width:100%;height:100%;object-fit:cover;">` : `<span class="photo-preview-empty">No photo</span>`;
-  }
-
-  function openSuggestModal() {
-    const modalEl = get("suggest-modal");
-    if (!modalEl) return;
-    const form = get("suggest-form");
-    if (form) form.reset();
-    pendingSuggestPhoto = null;
-    if (previewSuggestUrl) { URL.revokeObjectURL(previewSuggestUrl); previewSuggestUrl = ""; }
-    const fileInput = get("suggest-photo-file");
-    if (fileInput) fileInput.value = "";
-    showSuggestPhotoPreview("");
-    const removeBtn = get("suggest-remove-photo-btn");
-    if (removeBtn) removeBtn.classList.add("d-none");
-    bootstrap.Modal.getOrCreateInstance(modalEl).show();
-  }
-
-  async function submitSuggestForm(event) {
-    event.preventDefault();
-    const form = event.currentTarget;
-    if (!form.reportValidity()) return;
-
-    const values = new FormData(form);
-    const itemName = String(values.get("item_name") || "").trim();
-    const category = String(values.get("category") || "Other");
-    const quantity = Number(values.get("quantity") || 1);
-    const condition = String(values.get("condition_state") || "Good");
-    const description = String(values.get("description") || "").trim();
-    const imageUrl = String(values.get("image_url") || "").trim();
-
-    if (!itemName) {
-      showToast("Please enter an item name.", true);
-      return;
-    }
-
-    const payload = new FormData();
-    payload.append("action", "create");
-    payload.append("item_name", itemName);
-    payload.append("category", category);
-    payload.append("quantity", String(quantity));
-    payload.append("condition_state", condition);
-    payload.append("description", description);
-    payload.append("image_url", imageUrl);
-    payload.append("email", activeUser.email || "");
-
-    if (pendingSuggestPhoto) {
-      payload.append("photo_file", pendingSuggestPhoto, pendingSuggestPhoto.name || "photo.jpg");
-    }
-
-    const submitBtn = get("suggest-submit-btn");
-    if (submitBtn) submitBtn.disabled = true;
-
-    const res = await apiCall("suggestions.php?action=create", {
-      method: "POST",
-      body: payload
-    });
-
-    if (submitBtn) submitBtn.disabled = false;
-
-    if (res && res.success) {
-      bootstrap.Modal.getOrCreateInstance(get("suggest-modal")).hide();
-      showToast(res.message || "Thank you! Your donation suggestion has been submitted for review.");
-      await syncWithServer();
-      showSection("my-suggestions");
-    } else {
-      if (!Array.isArray(data.suggestions)) data.suggestions = [];
-      data.suggestions.unshift({
-        id: makeId(),
-        memberId: activeUser.id || makeId(),
-        memberName: activeUser.name,
-        memberEmail: activeUser.email,
-        itemName,
-        category,
-        description,
-        quantity,
-        conditionState: condition,
-        imageUrl: previewSuggestUrl || imageUrl,
-        status: "Pending",
-        rejectionReason: "",
-        reviewedBy: null,
-        reviewerName: null,
-        reviewedAt: null,
-        createdAt: offsetDate(0)
-      });
-      persist(data);
-      bootstrap.Modal.getOrCreateInstance(get("suggest-modal")).hide();
-      showToast(res?.message || "Thank you! Your donation suggestion has been submitted for review.");
-      renderMember();
-      showSection("my-suggestions");
-    }
-  }
-
-  // ── STEWARD APPROVE SUGGESTION ──────────────────────────────────────────────
-  async function approveSuggestion(id) {
-    if (!canAccessStewardDashboard(activeUser)) {
-      showToast("Only community stewards can approve suggestions.", true);
-      return;
-    }
-    const sug = (data.suggestions || []).find((item) => String(item.id) === String(id));
-    if (!sug || sug.status !== "Pending" || pendingSuggestionApprovals.has(String(id))) return;
-    const key = String(id);
-    pendingSuggestionApprovals.add(key);
-    document.querySelectorAll('[data-action="approve-suggestion"]').forEach((button) => {
-      if (button.dataset.id === key) button.disabled = true;
-    });
-
-    let approved = false;
-    try {
-      const res = await apiCall("suggestions.php?action=approve", {
-        method: "POST",
-        body: JSON.stringify({ id })
-      });
-
-      if (res?.success) {
-        approved = true;
-        showToast(res.message || "Item approved and added to equipment collection!");
-        await syncWithServer();
-      } else if (!res) {
-        approved = true;
-        sug.status = "Approved";
-        sug.reviewedBy = activeUser.id;
-        sug.reviewerName = activeUser.name;
-        sug.reviewedAt = offsetDate(0);
-        data.equipment.unshift({
-          id: makeId(),
-          name: sug.itemName,
-          category: sug.category,
-          emoji: categoryIcons[sug.category] || "📦",
-          description: sug.description || "Donated by community member.",
-          quantity: Number(sug.quantity),
-          available: Number(sug.quantity),
-          condition: sug.conditionState,
-          status: "Available",
-          photo: sug.imageUrl || ""
-        });
-        persist(data);
-        showToast(`Approved ${sug.itemName} and added to equipment!`);
-        renderAll();
-      } else {
-        showToast(res.message || "Could not approve suggestion.", true);
-      }
-    } finally {
-      pendingSuggestionApprovals.delete(key);
-      document.querySelectorAll('[data-action="approve-suggestion"]').forEach((button) => {
-        if (button.dataset.id === key) button.disabled = approved;
-      });
-    }
-  }
-
-  // ── STEWARD REJECT SUGGESTION ──────────────────────────────────────────────
-  let pendingRejectSuggestionId = null;
-
-  function openRejectSuggestionModal(id) {
-    if (!canAccessStewardDashboard(activeUser)) {
-      showToast("Only community stewards can review suggestions.", true);
-      return;
-    }
-    const sug = (data.suggestions || []).find((s) => String(s.id) === String(id));
-    if (!sug) return;
-    pendingRejectSuggestionId = id;
-    const form = get("reject-suggestion-form");
-    if (form) form.reset();
-    const idInput = get("reject-suggestion-id");
-    if (idInput) idInput.value = String(id);
-    const label = get("reject-suggestion-item-name");
-    if (label) label.textContent = `Declining suggestion for "${sug.itemName}" from ${sug.memberName}.`;
-    bootstrap.Modal.getOrCreateInstance(get("reject-suggestion-modal")).show();
-  }
-
-  async function submitRejectSuggestion(event) {
-    event.preventDefault();
-    const form = event.currentTarget;
-    const values = new FormData(form);
-    const id = String(values.get("suggestionId") || pendingRejectSuggestionId);
-    const reason = String(values.get("reason") || "").trim();
-
-    const res = await apiCall("suggestions.php?action=reject", {
-      method: "POST",
-      body: JSON.stringify({ id, reason })
-    });
-
-    if (res && res.success) {
-      bootstrap.Modal.getOrCreateInstance(get("reject-suggestion-modal")).hide();
-      showToast(res.message || "Suggestion declined.");
-      await syncWithServer();
-    } else {
-      const sug = (data.suggestions || []).find((s) => String(s.id) === String(id));
-      if (sug) {
-        sug.status = "Rejected";
-        sug.rejectionReason = reason;
-        sug.reviewedBy = activeUser.id;
-        sug.reviewerName = activeUser.name;
-        sug.reviewedAt = offsetDate(0);
-        persist(data);
-        bootstrap.Modal.getOrCreateInstance(get("reject-suggestion-modal")).hide();
-        showToast("Suggestion declined.");
-        renderAll();
-      } else {
-        showToast(res?.message || "Could not decline suggestion.", true);
-      }
-    }
-  }
-
   function setMemberAccountModal() {
     const select = get("member-account-select");
     if (!select) return;
@@ -1138,9 +744,6 @@
       if (action.dataset.action === "reject") reviewRequest(id, "Rejected");
       if (action.dataset.action === "checkin") openReturnModal(id);
       if (action.dataset.action === "borrow") openBorrowModal(id);
-      if (action.dataset.action === "suggest-item") openSuggestModal();
-      if (action.dataset.action === "approve-suggestion") approveSuggestion(id);
-      if (action.dataset.action === "reject-suggestion") openRejectSuggestionModal(id);
       if (action.dataset.action === "add-member") {
         if (activeUser.role !== "Administrator") { showToast("Only administrators can add community profiles.", true); return; }
         get("member-form").reset();
@@ -1187,34 +790,10 @@
       get("equipment-status").addEventListener("change", renderAdminEquipment);
       get("request-search").addEventListener("input", renderAdminRequests);
       get("request-status").addEventListener("change", renderAdminRequests);
-      if (get("suggestion-search")) get("suggestion-search").addEventListener("input", renderAdminSuggestions);
-      if (get("suggestion-status")) get("suggestion-status").addEventListener("change", renderAdminSuggestions);
-      if (get("reject-suggestion-form")) get("reject-suggestion-form").addEventListener("submit", submitRejectSuggestion);
       get("report-period").addEventListener("change", renderReports);
-      get("edit-photo-file").addEventListener("change", async (event) => {
-        const input = event.target;
-        const file = input.files[0];
-        if (!file) return;
-        const problem = validatePhotoFile(file);
-        if (problem) { showToast(problem, true); input.value = ""; return; }
-        try {
-          const resized = await resizePhoto(file);
-          pendingPhoto = resized instanceof File ? resized : new File([resized], "photo.jpg", { type: "image/jpeg" });
-          previewUrl = URL.createObjectURL(pendingPhoto);
-          get("edit-remove-photo").value = "0";
-          showPhotoPreview(previewUrl);
-          get("remove-photo-btn").classList.remove("d-none");
-        } catch (error) {
-          showToast(error.message || "Could not read that image.", true);
-          input.value = "";
-        }
-      });
-      get("remove-photo-btn").addEventListener("click", () => {
-        pendingPhoto = null;
-        get("edit-photo-file").value = "";
-        // If an uploaded photo already exists on the server, flag it for deletion on save.
-        const hadSavedPhoto = !!get("edit-photo").value;
-        setPhotoState({ src: "", removed: hadSavedPhoto });
+      get("edit-photo").addEventListener("input", (event) => {
+        const input = event.currentTarget;
+        showPhotoPreview(input.validity.valid ? input.value : "");
       });
       get("edit-quantity").addEventListener("input", () => { get("edit-available").max = get("edit-quantity").value; });
 
@@ -1231,26 +810,23 @@
         if (quantity < 0 || available < 0 || available > quantity) { showToast("Available quantity must be between zero and the total.", true); return; }
         const name = String(values.get("name")).trim();
 
-        if (pendingPhoto && pendingPhoto.size > PHOTO_MAX_BYTES) { showToast("That photo is still over 5 MB after resizing. Please choose another.", true); return; }
-
-        // multipart/form-data so the optional photo travels with the other fields
-        const payload = new FormData();
-        if (id) payload.append("id", id);
-        payload.append("action", id ? "update" : "create");
-        payload.append("name", name);
-        payload.append("category", String(values.get("category")));
-        payload.append("quantity", String(quantity));
-        payload.append("available", String(available));
-        payload.append("emoji", String(values.get("emoji")).trim() || "📦");
-        payload.append("condition", String(values.get("condition")));
-        payload.append("status", String(values.get("status")));
-        payload.append("description", String(values.get("description")).trim());
-        if (pendingPhoto) payload.append("photo_file", pendingPhoto, pendingPhoto.name || "photo.jpg");
-        else if (get("edit-remove-photo").value === "1") payload.append("remove_photo", "1");
+        const payload = {
+          id,
+          action: id ? "update" : "create",
+          name,
+          category: String(values.get("category")),
+          quantity,
+          available,
+          emoji: String(values.get("emoji")).trim() || "📦",
+          condition: String(values.get("condition")),
+          status: String(values.get("status")),
+          description: String(values.get("description")).trim(),
+          photo: String(values.get("photo") || "").trim()
+        };
 
         const submitButton = form.querySelector('[type="submit"]');
         submitButton.disabled = true;
-        const res = await apiCall("equipment.php", { method: "POST", body: payload });
+        const res = await apiCall("equipment.php", { method: "POST", body: JSON.stringify(payload) });
         submitButton.disabled = false;
 
         if (res && res.success) {
@@ -1343,41 +919,6 @@
         if (Number(get("borrow-quantity").value) > Number(get("borrow-quantity").max)) get("borrow-quantity").value = get("borrow-quantity").max;
       });
       get("borrow-form").addEventListener("submit", createRequest);
-      if (get("suggest-form")) get("suggest-form").addEventListener("submit", submitSuggestForm);
-      if (get("suggest-photo-file")) {
-        get("suggest-photo-file").addEventListener("change", async (event) => {
-          const file = event.target.files[0];
-          if (!file) return;
-          const problem = validatePhotoFile(file);
-          if (problem) { showToast(problem, true); event.target.value = ""; return; }
-          try {
-            const resized = await resizePhoto(file);
-            pendingSuggestPhoto = resized instanceof File ? resized : new File([resized], "photo.jpg", { type: "image/jpeg" });
-            previewSuggestUrl = URL.createObjectURL(pendingSuggestPhoto);
-            showSuggestPhotoPreview(previewSuggestUrl);
-            const rmBtn = get("suggest-remove-photo-btn");
-            if (rmBtn) rmBtn.classList.remove("d-none");
-          } catch (err) {
-            showToast(err.message || "Could not read that photo.", true);
-            event.target.value = "";
-          }
-        });
-      }
-      if (get("suggest-remove-photo-btn")) {
-        get("suggest-remove-photo-btn").addEventListener("click", () => {
-          pendingSuggestPhoto = null;
-          if (previewSuggestUrl) { URL.revokeObjectURL(previewSuggestUrl); previewSuggestUrl = ""; }
-          const fileInput = get("suggest-photo-file");
-          if (fileInput) fileInput.value = "";
-          showSuggestPhotoPreview("");
-          get("suggest-remove-photo-btn").classList.add("d-none");
-        });
-      }
-      document.querySelectorAll("[data-member-suggestion-filter]").forEach((button) => button.addEventListener("click", () => {
-        memberSuggestionFilter = button.dataset.memberSuggestionFilter;
-        document.querySelectorAll("[data-member-suggestion-filter]").forEach((tab) => tab.classList.toggle("active", tab === button));
-        renderMemberSuggestions();
-      }));
       document.querySelectorAll("[data-member-filter]").forEach((button) => button.addEventListener("click", () => {
         requestFilter = button.dataset.memberFilter;
         document.querySelectorAll("[data-member-filter]").forEach((tab) => tab.classList.toggle("active", tab === button));

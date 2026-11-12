@@ -56,7 +56,6 @@ $tables = [
     'activity_log'         => 0,
     'user_sessions'        => 0,
     'equipment_maintenance'=> 0,
-    'equipment_suggestions'=> 0,
     'login_attempts'       => 0,
 ];
 
@@ -222,13 +221,6 @@ if ($pdo) {
           <div>
             <strong>controller/requests.php</strong>
             <small class="d-block text-secondary">GET borrowing requests list & approval flow</small>
-          </div>
-          <span class="badge bg-light text-dark border">JSON API ↗</span>
-        </a>
-        <a href="controller/suggestions.php" target="_blank" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
-          <div>
-            <strong>controller/suggestions.php</strong>
-            <small class="d-block text-secondary">GET / POST item suggestions & donations review workflow</small>
           </div>
           <span class="badge bg-light text-dark border">JSON API ↗</span>
         </a>

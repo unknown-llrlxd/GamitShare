@@ -8,8 +8,7 @@
  *  - GET    /controller/equipment.php?action=categories → List all categories
  *  - GET    /controller/equipment.php?id=X          → Get single equipment details
  *  - POST   /controller/equipment.php               → Add new equipment (admin)
- *      Accepts JSON or multipart/form-data. Optional file field: photo_file (JPG/PNG/WebP, max 5 MB)
- *      Optional flag on update: remove_photo=1
+ *      Accepts JSON or form data. Optional photo/photo_url field must be an external HTTP(S) URL.
  *  - POST   /controller/equipment.php?action=update  → Edit equipment (admin)
  *  - POST   /controller/equipment.php?action=delete  → Remove equipment (admin)
  */
@@ -137,70 +136,6 @@ function resolve_category_id(PDO $pdo, string|int $catInput, string $emoji = '�
     return (int)$pdo->lastInsertId();
 }
 
-// ── PHOTO UPLOAD HELPERS ─────────────────────────────────────────────────────
-const PHOTO_DIR_REL  = 'uploads/equipment';            // stored in DB, relative to project root
-const PHOTO_MAX_BYTES = 5 * 1024 * 1024;               // 5 MB
-const PHOTO_TYPES    = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp'];
-
-/** True when the stored photo value points to a file we manage locally. */
-function is_local_photo(string $photo): bool
-{
-    return str_starts_with($photo, PHOTO_DIR_REL . '/') && !str_contains($photo, '..');
-}
-
-/** Deletes a locally stored photo (no-op for external URLs or missing files). */
-function delete_local_photo(string $photo): void
-{
-    if (!is_local_photo($photo)) {
-        return;
-    }
-    $path = dirname(__DIR__) . '/' . $photo;
-    if (is_file($path)) {
-        @unlink($path);
-    }
-}
-
-/**
- * Validates and stores an uploaded equipment photo.
- *
- * @param array<string, mixed> $file  Entry from $_FILES
- * @return string  Relative path saved in equipment.photo_url
- */
-function save_uploaded_photo(array $file): string
-{
-    $err = (int)($file['error'] ?? UPLOAD_ERR_NO_FILE);
-    if ($err === UPLOAD_ERR_INI_SIZE || $err === UPLOAD_ERR_FORM_SIZE) {
-        json_error('Photo is too large. The maximum size is 5 MB.', 413);
-    }
-    if ($err !== UPLOAD_ERR_OK) {
-        json_error('Photo upload failed. Please try again.', 400);
-    }
-    if (!is_uploaded_file($file['tmp_name'])) {
-        json_error('Invalid upload.', 400);
-    }
-    if ((int)$file['size'] > PHOTO_MAX_BYTES) {
-        json_error('Photo is too large. The maximum size is 5 MB.', 413);
-    }
-
-    // Check the real content type (never trust the browser-supplied one or the file name)
-    $finfo = new finfo(FILEINFO_MIME_TYPE);
-    $mime  = (string)$finfo->file($file['tmp_name']);
-    if (!isset(PHOTO_TYPES[$mime]) || @getimagesize($file['tmp_name']) === false) {
-        json_error('Photo must be a JPG, PNG, or WebP image.', 415);
-    }
-
-    $dir = dirname(__DIR__) . '/' . PHOTO_DIR_REL;
-    if (!is_dir($dir) && !mkdir($dir, 0755, true) && !is_dir($dir)) {
-        json_error('Could not create the uploads folder.', 500);
-    }
-
-    $name = sprintf('equip_%d_%s.%s', time(), bin2hex(random_bytes(8)), PHOTO_TYPES[$mime]);
-    if (!move_uploaded_file($file['tmp_name'], $dir . '/' . $name)) {
-        json_error('Could not save the uploaded photo.', 500);
-    }
-    return PHOTO_DIR_REL . '/' . $name;
-}
-
 // ── DELETE EQUIPMENT ─────────────────────────────────────────────────────────
 if ($method === 'DELETE' || $action === 'delete') {
     $id = (int)($data['id'] ?? $_GET['id'] ?? 0);
@@ -209,7 +144,7 @@ if ($method === 'DELETE' || $action === 'delete') {
     }
 
     // Check if equipment exists
-    $stmt = $pdo->prepare('SELECT id, name, photo_url FROM equipment WHERE id = :id LIMIT 1');
+    $stmt = $pdo->prepare('SELECT id, name FROM equipment WHERE id = :id LIMIT 1');
     $stmt->execute([':id' => $id]);
     $item = $stmt->fetch();
     if (!$item) {
@@ -245,7 +180,6 @@ if ($method === 'DELETE' || $action === 'delete') {
         );
 
         $pdo->commit();
-        delete_local_photo((string)($item['photo_url'] ?? ''));
 
         json_response([
             'success' => true,
@@ -271,8 +205,21 @@ if ($method === 'POST') {
     $condition   = trim((string)($data['condition'] ?? 'Good')) ?: 'Good';
     $status      = trim((string)($data['status'] ?? 'Available')) ?: 'Available';
     $description = trim((string)($data['description'] ?? ''));
-    $removePhoto = !empty($data['remove_photo']) && $data['remove_photo'] !== '0';
-    $hasUpload   = isset($_FILES['photo_file']) && ($_FILES['photo_file']['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE;
+    $photoInput  = $data['photo'] ?? $data['photo_url'] ?? '';
+
+    if (!is_string($photoInput)) {
+        json_error('Photo URL must be a string.');
+    }
+    $photoUrl = trim($photoInput);
+    if ($photoUrl !== '') {
+        if (mb_strlen($photoUrl) > 2048 || filter_var($photoUrl, FILTER_VALIDATE_URL) === false) {
+            json_error('Photo must be a valid HTTP or HTTPS image URL.');
+        }
+        $photoScheme = strtolower((string)parse_url($photoUrl, PHP_URL_SCHEME));
+        if (!in_array($photoScheme, ['http', 'https'], true)) {
+            json_error('Photo must be a valid HTTP or HTTPS image URL.');
+        }
+    }
 
     // Validation
     if ($name === '') {
@@ -298,28 +245,11 @@ if ($method === 'POST') {
         $status = $available > 0 ? 'Available' : 'Borrowed';
     }
 
-    // Photo: the current value always comes from the database, never from the client.
-    $currentPhoto = '';
     if ($id) {
-        $cur = $pdo->prepare('SELECT photo_url FROM equipment WHERE id = :id LIMIT 1');
-        $cur->execute([':id' => $id]);
-        $row = $cur->fetch();
-        if (!$row) {
+        $exists = $pdo->prepare('SELECT id FROM equipment WHERE id = :id LIMIT 1');
+        $exists->execute([':id' => $id]);
+        if (!$exists->fetchColumn()) {
             json_error('Equipment not found.', 404);
-        }
-        $currentPhoto = (string)($row['photo_url'] ?? '');
-    }
-
-    $photoUrl = $currentPhoto;
-    if ($hasUpload) {
-        $photoUrl = save_uploaded_photo($_FILES['photo_file']);   // validated + stored
-    } elseif ($removePhoto) {
-        $photoUrl = '';
-    } else {
-        // Backward compatible: a JSON client may still send an external http(s) image URL.
-        $extUrl = trim((string)($data['photo'] ?? $data['photo_url'] ?? ''));
-        if ($extUrl !== '' && preg_match('#^https?://#i', $extUrl) && filter_var($extUrl, FILTER_VALIDATE_URL)) {
-            $photoUrl = $extUrl;
         }
     }
 
@@ -354,10 +284,6 @@ if ($method === 'POST') {
                 ':status'      => $status,
                 ':id'          => $id,
             ]);
-
-            if ($currentPhoto !== '' && $currentPhoto !== $photoUrl) {
-                delete_local_photo($currentPhoto);   // old file is no longer referenced
-            }
 
             log_activity(
                 $pdo,
@@ -416,9 +342,6 @@ if ($method === 'POST') {
             ], 201);
         }
     } catch (PDOException $e) {
-        if ($hasUpload && $photoUrl !== $currentPhoto) {
-            delete_local_photo($photoUrl);   // don't leave an orphaned file behind
-        }
         error_log('GamitShare equipment save error: ' . $e->getMessage());
         json_error('A database error occurred. Please try again.', 500);
     }
