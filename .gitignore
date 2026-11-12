@@ -1,0 +1,10 @@
+# Database config with sensitive credentials
+config/database.php
+
+# Test files and backups
+test_db.php
+*.sql
+
+# Local OS files
+.DS_Store
+Thumbs.db
