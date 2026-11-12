@@ -329,18 +329,37 @@ if ($action === 'approve') {
     try {
         $pdo->beginTransaction();
 
+        $lockedStmt = $pdo->prepare(
+            'SELECT s.*, u.name AS member_name, u.email AS member_email
+               FROM equipment_suggestions s
+               JOIN users u ON u.id = s.member_id
+              WHERE s.id = :id
+              LIMIT 1
+              FOR UPDATE'
+        );
+        $lockedStmt->execute([':id' => $suggestionId]);
+        $suggestion = $lockedStmt->fetch();
+        if (!$suggestion || $suggestion['status'] !== 'Pending') {
+            $pdo->rollBack();
+            json_error('Only pending suggestions can be approved.');
+        }
+
         // 1. Mark suggestion as Approved
         $upd = $pdo->prepare(
             "UPDATE equipment_suggestions
                 SET status      = 'Approved',
                     reviewed_by = :reviewer,
                     reviewed_at = NOW()
-              WHERE id = :id"
+              WHERE id = :id AND status = 'Pending'"
         );
         $upd->execute([
             ':reviewer' => $currentUser['id'],
             ':id'       => $suggestionId,
         ]);
+        if ($upd->rowCount() !== 1) {
+            $pdo->rollBack();
+            json_error('Only pending suggestions can be approved.');
+        }
 
         // 2. Resolve equipment category ID & emoji
         $categoryId = resolve_equipment_category_id($pdo, (string)$suggestion['category']);

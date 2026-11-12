@@ -51,6 +51,7 @@
   let requestFilter = "";
   let memberSuggestionFilter = "";
   let confirmCallback = null;
+  const pendingSuggestionApprovals = new Set();
   const categoryIcons = { Tools: "🧰", Events: "🎪", Electronics: "🔌", Garden: "🌱", Sports: "⚽", Other: "📦" };
   const stewardRoles = ["Administrator", "Organization officer", "Custodian"];
   const isAdministrator = () => activeUser?.role === "Administrator";
@@ -892,17 +893,27 @@
       showToast("Only community stewards can approve suggestions.", true);
       return;
     }
-    const res = await apiCall("suggestions.php?action=approve", {
-      method: "POST",
-      body: JSON.stringify({ id })
+    const sug = (data.suggestions || []).find((item) => String(item.id) === String(id));
+    if (!sug || sug.status !== "Pending" || pendingSuggestionApprovals.has(String(id))) return;
+    const key = String(id);
+    pendingSuggestionApprovals.add(key);
+    document.querySelectorAll('[data-action="approve-suggestion"]').forEach((button) => {
+      if (button.dataset.id === key) button.disabled = true;
     });
 
-    if (res && res.success) {
-      showToast(res.message || "Item approved and added to equipment collection!");
-      await syncWithServer();
-    } else {
-      const sug = (data.suggestions || []).find((s) => String(s.id) === String(id));
-      if (sug) {
+    let approved = false;
+    try {
+      const res = await apiCall("suggestions.php?action=approve", {
+        method: "POST",
+        body: JSON.stringify({ id })
+      });
+
+      if (res?.success) {
+        approved = true;
+        showToast(res.message || "Item approved and added to equipment collection!");
+        await syncWithServer();
+      } else if (!res) {
+        approved = true;
         sug.status = "Approved";
         sug.reviewedBy = activeUser.id;
         sug.reviewerName = activeUser.name;
@@ -923,8 +934,13 @@
         showToast(`Approved ${sug.itemName} and added to equipment!`);
         renderAll();
       } else {
-        showToast(res?.message || "Could not approve suggestion.", true);
+        showToast(res.message || "Could not approve suggestion.", true);
       }
+    } finally {
+      pendingSuggestionApprovals.delete(key);
+      document.querySelectorAll('[data-action="approve-suggestion"]').forEach((button) => {
+        if (button.dataset.id === key) button.disabled = approved;
+      });
     }
   }
 
