@@ -37,19 +37,6 @@ gamitshare/
 
 Open `views/auth/login.html` to sign in or create a member account, or open `views/admin/dashboard.html` for the administrator dashboard in a modern browser. The member dashboard redirects to sign-in when no member session exists. No build step is required. The pages load Bootstrap 5 from jsDelivr; Google Fonts are optional, with system font fallbacks.
 
-### Test Accounts
-
-| Role | Name | Email | Password |
-| :--- | :--- | :--- | :--- |
-| **Administrator** | Maya Santos | `maya.santos@example.org` | `admin12345` |
-| **Organization Officer** | Noah Cruz | `noah.cruz@example.org` | `officer12345` |
-| **Custodian** | Rafi Dela Cruz | `rafi.dc@example.org` | `custodian12345` |
-| **Member** | Lina Reyes | `lina.reyes@example.org` | `member12345` |
-| **Member** | Ivo Mercado | `ivo.m@example.org` | `member12345` |
-salcedo.lerald@gmail.com admin123
-
-> Direct prototype access: You can also navigate directly to `views/admin/dashboard.html` to test the Administrator dashboard without signing in.
-
 The community dashboard is available to administrators, organization officers, and custodians for borrowing approvals and return tracking. Administrators also manage equipment and member roles. The member dashboard focuses on available equipment, borrowing requests, and personal request history. Both dashboards share equipment and borrowing data; their demo sessions are stored separately. Each dashboard links directly to the other.
 
 ## Prototype limitations
