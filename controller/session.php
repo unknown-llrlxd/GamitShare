@@ -31,33 +31,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit;
 }
 
-// ── Start session ────────────────────────────────────────────────────────────
+// The session ID is validated against TiDB so authentication works across
+// independent serverless function instances.
 session_name('gamitshare_session');
-session_set_cookie_params([
-    'lifetime' => 0,
-    'path'     => '/',
-    'secure'   => is_https(),
-    'httponly' => true,
-    'samesite' => 'Lax',
-]);
-session_start();
+$sessionId = $_COOKIE[session_name()] ?? '';
 
 // ── Logout ───────────────────────────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'DELETE' || ($_GET['action'] ?? '') === 'logout') {
-    // Remove from DB
-    if (!empty($_SESSION['user_id'])) {
+    if (is_string($sessionId) && $sessionId !== '') {
         try {
             $pdo  = db_connect();
             $stmt = $pdo->prepare('DELETE FROM user_sessions WHERE id = :sid');
-            $stmt->execute([':sid' => session_id()]);
+            $stmt->execute([':sid' => $sessionId]);
         } catch (RuntimeException | PDOException $e) {
             error_log('GamitShare logout DB error: ' . $e->getMessage());
+            http_response_code(503);
+            echo json_encode(['success' => false, 'message' => 'Could not sign out. Please try again.']);
+            exit;
         }
     }
 
-    $_SESSION = [];
-    session_destroy();
-    setcookie(session_name(), '', time() - 3600, '/');
+    setcookie(session_name(), '', [
+        'expires'  => time() - 3600,
+        'path'     => '/',
+        'secure'   => is_https(),
+        'httponly' => true,
+        'samesite' => 'Lax',
+    ]);
 
     http_response_code(200);
     echo json_encode(['success' => true, 'message' => 'You have been signed out.']);
@@ -65,7 +65,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'DELETE' || ($_GET['action'] ?? '') === 'logo
 }
 
 // ── Validate the session against DB ──────────────────────────────────────────
-if (empty($_SESSION['user_id'])) {
+if (!is_string($sessionId) || $sessionId === '' || strlen($sessionId) > 128) {
     http_response_code(401);
     echo json_encode(['success' => false, 'message' => 'Not signed in.', 'authenticated' => false]);
     exit;
@@ -82,7 +82,7 @@ try {
           WHERE s.id = :sid AND s.expires_at > NOW()
           LIMIT 1'
     );
-    $stmt->execute([':sid' => session_id()]);
+    $stmt->execute([':sid' => $sessionId]);
     $row = $stmt->fetch();
 } catch (RuntimeException | PDOException $e) {
     error_log('GamitShare session verify error: ' . $e->getMessage());
@@ -93,8 +93,13 @@ try {
 
 if (!$row || !(bool)$row['is_active']) {
     // Session expired or account deactivated — clean up
-    $_SESSION = [];
-    session_destroy();
+    setcookie(session_name(), '', [
+        'expires'  => time() - 3600,
+        'path'     => '/',
+        'secure'   => is_https(),
+        'httponly' => true,
+        'samesite' => 'Lax',
+    ]);
     http_response_code(401);
     echo json_encode(['success' => false, 'message' => 'Session expired. Please sign in again.', 'authenticated' => false]);
     exit;
@@ -119,6 +124,6 @@ echo json_encode([
 function is_https(): bool
 {
     return (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+        || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https')
         || (($_SERVER['SERVER_PORT'] ?? '') === '443');
 }
-

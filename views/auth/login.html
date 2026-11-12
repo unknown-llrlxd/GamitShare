@@ -61,7 +61,7 @@
                    autocomplete="current-password" placeholder="Enter your password"
                    required minlength="8">
             <button class="password-toggle" type="button"
-                    data-password-toggle="login-password" aria-label="Show password">Show</button>
+                    data-password-toggle="login-password" aria-label="Show password" aria-pressed="false">Show</button>
           </div>
 
           <p class="auth-error" id="login-error" role="alert" hidden></p>
@@ -87,13 +87,15 @@
                    autocomplete="new-password" placeholder="At least 8 characters"
                    required minlength="8">
             <button class="password-toggle" type="button"
-                    data-password-toggle="signup-password" aria-label="Show password">Show</button>
+                    data-password-toggle="signup-password" aria-label="Show password" aria-pressed="false">Show</button>
           </div>
 
           <label for="signup-confirm">Confirm password</label>
           <input class="form-control" id="signup-confirm" name="confirm" type="password"
-                 autocomplete="new-password" placeholder="Enter your password again"
-                 required minlength="8">
+               autocomplete="new-password" placeholder="Enter your password again"
+               required minlength="8">
+          <button class="password-toggle" type="button"
+                  data-password-toggle="signup-confirm" aria-label="Show password" aria-pressed="false">Show</button>
 
           <p class="auth-error" id="signup-error" role="alert" hidden></p>
 

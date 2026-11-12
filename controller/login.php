@@ -45,6 +45,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 if (session_status() === PHP_SESSION_NONE) {
     session_name('gamitshare_session');
     $isHttps = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+        || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https')
         || (($_SERVER['SERVER_PORT'] ?? '') === '443');
 
     session_set_cookie_params([
@@ -215,8 +216,19 @@ try {
         ':exp' => $expiresAt,
     ]);
 } catch (PDOException $e) {
-    // Non-fatal — the PHP session still works; just log it
     error_log('GamitShare session insert failed: ' . $e->getMessage());
+    $_SESSION = [];
+    session_destroy();
+    setcookie(session_name(), '', [
+        'expires'  => time() - 3600,
+        'path'     => '/',
+        'secure'   => $isHttps,
+        'httponly' => true,
+        'samesite' => 'Lax',
+    ]);
+    http_response_code(503);
+    echo json_encode(['success' => false, 'message' => 'Could not create a sign-in session. Please try again.']);
+    exit;
 }
 
 // ── Success ─────────────────────────────────────────────────────────────────
@@ -264,4 +276,3 @@ function is_https(): bool
     return (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
         || (($_SERVER['SERVER_PORT'] ?? '') === '443');
 }
-

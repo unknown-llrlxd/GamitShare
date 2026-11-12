@@ -54,4 +54,6 @@ The community dashboard is available to administrators, organization officers, a
 
 ## Prototype limitations
 
-This is a front-end demonstration, not a production authentication or authorization system. Member passwords are hashed with PBKDF2 and stored in the browser, but browser data and role checks can be changed by the person using it; this does not replace server-side authentication. A production deployment needs a trusted API, server-side authorization, secure account registration/login, validated file uploads, and a shared database. The local sign-in page requires a secure browser context (localhost or HTTPS) for Web Crypto.
+The server-backed sign-in and protected API use an HTTP-only session cookie validated against the `user_sessions` table, so the session works across Vercel function instances. Configure `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, and `DB_PASS` in Vercel and import the schema in `gamitshare_db.sql` into TiDB Cloud. The admin dashboard's local demo fallback is for preview only; write operations still require a valid Administrator session.
+
+Equipment photos are currently saved to `uploads/equipment` on the application filesystem. Vercel's serverless filesystem is not persistent, so production photo uploads require persistent object storage; without it, add/edit equipment without a photo. The local sign-in page requires a secure browser context (localhost or HTTPS) for Web Crypto.

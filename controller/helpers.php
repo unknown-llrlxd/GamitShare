@@ -38,27 +38,6 @@ function init_api_headers(): void
 }
 
 /**
- * Starts or resumes the GamitShare PHP session.
- */
-function start_app_session(): void
-{
-    if (session_status() === PHP_SESSION_NONE) {
-        session_name('gamitshare_session');
-        $isHttps = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
-            || (($_SERVER['SERVER_PORT'] ?? '') === '443');
-
-        session_set_cookie_params([
-            'lifetime' => 0,
-            'path'     => '/',
-            'secure'   => $isHttps,
-            'httponly' => true,
-            'samesite' => 'Lax',
-        ]);
-        session_start();
-    }
-}
-
-/**
  * Reads request input from JSON body or $_POST/$_GET.
  *
  * @return array<string, mixed>
@@ -85,31 +64,31 @@ function get_request_data(): array
 
 /**
  * Retrieves the currently authenticated user.
- * Strictly verifies identity using server-side PHP session ($_SESSION['user_id']).
+ * Verifies the HTTP-only session cookie against the persistent database session.
  *
  * @param PDO $pdo
  * @return array<string, mixed>|null
  */
 function get_current_user_account(PDO $pdo): ?array
 {
-    start_app_session();
-
-    // 1. Check PHP session
-    if (!empty($_SESSION['user_id'])) {
-        $stmt = $pdo->prepare(
-            'SELECT id, organization_id, name, email, role, is_active
-               FROM users
-              WHERE id = :id AND is_active = 1
-              LIMIT 1'
-        );
-        $stmt->execute([':id' => $_SESSION['user_id']]);
-        $user = $stmt->fetch();
-        if ($user) {
-            return $user;
-        }
+    session_name('gamitshare_session');
+    $sessionId = $_COOKIE[session_name()] ?? '';
+    if (!is_string($sessionId) || $sessionId === '' || strlen($sessionId) > 128) {
+        return null;
     }
 
-    return null;
+    // Vercel may route consecutive requests to different instances, so PHP's
+    // local session files are not authoritative; the TiDB session row is.
+    $stmt = $pdo->prepare(
+        'SELECT u.id, u.organization_id, u.name, u.email, u.role, u.is_active
+           FROM user_sessions s
+           JOIN users u ON u.id = s.user_id
+          WHERE s.id = :sid AND s.expires_at > NOW() AND u.is_active = 1
+          LIMIT 1'
+    );
+    $stmt->execute([':sid' => $sessionId]);
+    $user = $stmt->fetch();
+    return $user ?: null;
 }
 
 /**
@@ -213,4 +192,3 @@ function json_error(string $message, int $statusCode = 400): void
 {
     json_response(['success' => false, 'message' => $message], $statusCode);
 }
-

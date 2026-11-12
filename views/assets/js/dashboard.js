@@ -86,7 +86,11 @@
       ...(options.headers || {})
     };
     try {
-      const res = await fetch(`${API_BASE}/${endpoint}`, { ...options, headers });
+      const res = await fetch(`${API_BASE}/${endpoint}`, {
+        credentials: "same-origin",
+        ...options,
+        headers
+      });
       if (!res.ok && res.status === 401 && !isAdminPage) {
         // If unauthenticated on protected member call
       }

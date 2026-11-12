@@ -169,6 +169,7 @@ try {
 // ── Auto-login: start a session for the new user ─────────────────────────────
 session_name('gamitshare_session');
 $isHttps = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+    || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https')
     || (($_SERVER['SERVER_PORT'] ?? '') === '443');
 session_set_cookie_params([
     'lifetime' => 0,
@@ -207,6 +208,21 @@ try {
     ]);
 } catch (PDOException $e) {
     error_log('GamitShare new-user session insert failed: ' . $e->getMessage());
+    $_SESSION = [];
+    session_destroy();
+    setcookie(session_name(), '', [
+        'expires'  => time() - 3600,
+        'path'     => '/',
+        'secure'   => $isHttps,
+        'httponly' => true,
+        'samesite' => 'Lax',
+    ]);
+    http_response_code(503);
+    echo json_encode([
+        'success' => false,
+        'message' => 'Your account was created, but automatic sign-in failed. Please sign in.',
+    ]);
+    exit;
 }
 
 // ── Success ──────────────────────────────────────────────────────────────────
@@ -228,4 +244,3 @@ function is_https(): bool
     return (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
         || (($_SERVER['SERVER_PORT'] ?? '') === '443');
 }
-
