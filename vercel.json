@@ -15,6 +15,18 @@
       "dest": "/views/assets/$1"
     },
     {
+      "src": "^/admin/(.*)$",
+      "dest": "/views/admin/$1"
+    },
+    {
+      "src": "^/member/(.*)$",
+      "dest": "/views/member/$1"
+    },
+    {
+      "src": "^/auth/(.*)$",
+      "dest": "/views/auth/$1"
+    },
+    {
       "src": "^/controller/(.+\\.php)$",
       "dest": "/api/index.php"
     },
