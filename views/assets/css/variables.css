@@ -1,0 +1,19 @@
+/* Shared Design Tokens for GamitShare */
+:root {
+  /* Page background */
+  --bg-page: #F8F9F6;               /* Warm off-white */
+  /* Card & table surface */
+  --bg-surface: #FFFFFF;            /* Crisp white */
+  --border-surface: #E5E7EB;        /* 1px solid border */
+  --radius-surface: 12px;           /* Consistent radius */
+
+  /* Brand colors */
+  --brand-primary: #1E4D3B;         /* Deep forest green */
+  --brand-sage: #E3EFE8;            /* Soft sage */
+  --accent-amber: #D97706;          /* Warm amber */
+
+  /* Text colors */
+  --text-main: #111827;            /* Main text */
+  --text-muted: #4B5563;           /* Muted helper text (WCAG AA) */
+}
+

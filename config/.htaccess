@@ -1,0 +1,6 @@
+# Block direct browser access to config files
+<Files "*.php">
+  Order allow,deny
+  Deny from all
+</Files>
+
