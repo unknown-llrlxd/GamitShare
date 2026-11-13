@@ -416,6 +416,12 @@ if ($action === 'return' || $action === 'checkin') {
         json_error('Only active borrowings (Approved or Overdue) can be checked in.');
     }
 
+    $returnDate = trim((string)($data['returnDate'] ?? $data['return_date'] ?? ''));
+    $returnDateTime = DateTime::createFromFormat('Y-m-d', $returnDate);
+    if ($returnDate === '' || !$returnDateTime || $returnDateTime->format('Y-m-d') !== $returnDate) {
+        json_error('A valid return date is required. Please use YYYY-MM-DD.');
+    }
+
     $returnCondition = trim((string)($data['condition'] ?? 'Good'));
     $returnNotes     = trim((string)($data['notes'] ?? ''));
 
@@ -445,13 +451,14 @@ if ($action === 'return' || $action === 'checkin') {
                 SET status           = 'Returned',
                     return_condition = :cond,
                     return_notes     = :notes,
-                    returned_at      = CURDATE()
+                    returned_at      = :returned_at
               WHERE id = :id"
         );
         $updReq->execute([
-            ':cond'  => $returnCondition,
-            ':notes' => $returnNotes,
-            ':id'    => $requestId,
+            ':cond'        => $returnCondition,
+            ':notes'       => $returnNotes,
+            ':returned_at' => $returnDate,
+            ':id'          => $requestId,
         ]);
 
         // 2. Adjust inventory with fresh numbers

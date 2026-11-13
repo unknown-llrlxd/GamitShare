@@ -633,6 +633,7 @@
     if (!request || !isActiveBorrowing(request)) return;
     get("return-form").reset();
     get("return-form").elements.requestId.value = request.id;
+    get("return-date").value = offsetDate(0);
     get("return-copy").textContent = `Checking in ${itemFor(request)?.name || "equipment"} from ${request.borrower}. Please note its condition.`;
     bootstrap.Modal.getOrCreateInstance(get("return-modal")).show();
   }
@@ -644,12 +645,13 @@
     if (!form.reportValidity()) return;
     const values = new FormData(form);
     const id = String(values.get("requestId"));
+    const returnDate = String(values.get("returnDate"));
     const condition = String(values.get("condition"));
     const notes = String(values.get("notes") || "").trim();
 
     const res = await apiCall("requests.php?action=return", {
       method: "POST",
-      body: JSON.stringify({ id, condition, notes })
+      body: JSON.stringify({ id, returnDate, condition, notes })
     });
 
     if (res && res.success) {
