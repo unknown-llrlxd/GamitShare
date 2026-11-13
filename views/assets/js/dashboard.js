@@ -444,7 +444,11 @@
   }
 
   function renderMemberRequests() {
-    const requests = currentUserRequests().filter((request) => !requestFilter || request.status === requestFilter).sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
+    const requests = currentUserRequests().filter((request) => {
+      if (!requestFilter) return true;
+      if (requestFilter === "Approved") return isActiveBorrowing(request);
+      return request.status === requestFilter;
+    }).sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
     get("member-request-count").textContent = String(currentUserRequests().filter((request) => request.status === "Pending").length);
     get("member-requests-table").innerHTML = requests.length ? requests.map((request) => `<tr><td>${itemCell(itemFor(request))}</td><td>${formatDate(request.startDate)} – ${formatDate(request.dueDate)}<small class="d-block mt-1 text-secondary">Requested ${formatDate(request.createdAt)}</small></td><td>${request.quantity}</td><td><span class="status-pill ${statusClass(request.status)}">${escapeHtml(request.status)}</span></td><td>${escapeHtml(request.purpose)}</td></tr>`).join("") : `<tr><td colspan="5" class="empty-table">No requests here yet. Your next project could be the first.</td></tr>`;
   }
