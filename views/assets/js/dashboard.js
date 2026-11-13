@@ -47,6 +47,7 @@
   let requestFilter = "";
   let confirmCallback = null;
   let requestSubmissionInProgress = false;
+  let serverSyncInProgress = false;
   const pendingRequestReviews = new Set();
   const categoryIcons = { Tools: "🧰", Events: "🎪", Electronics: "🔌", Garden: "🌱", Sports: "⚽", Other: "📦" };
   const stewardRoles = ["Administrator", "Organization officer", "Custodian"];
@@ -90,6 +91,8 @@
   }
 
   async function syncWithServer() {
+    if (serverSyncInProgress) return;
+    serverSyncInProgress = true;
     try {
       const [eqRes, reqRes, actRes] = await Promise.all([
         apiCall("equipment.php"),
@@ -158,6 +161,8 @@
       renderAll();
     } catch (e) {
       console.warn("[GamitShare] Server sync error, using local state:", e);
+    } finally {
+      serverSyncInProgress = false;
     }
   }
 
@@ -312,10 +317,11 @@
       ["◷", "Waiting for review", pending.length, "Requests to look over"]
     ];
     get("admin-metrics").innerHTML = metrics.map(([icon, label, value, note]) => `<article class="metric-card"><span class="metric-icon">${icon}</span><span><span class="metric-label">${label}</span><strong class="metric-value">${value}</strong><small class="metric-foot">${note}</small></span></article>`).join("");
-    get("overview-requests").innerHTML = pending.length ? pending.slice(0, 4).map((request) => {
+    const recentRequests = data.requests.slice().sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || "")).slice(0, 4);
+    get("overview-requests").innerHTML = recentRequests.length ? recentRequests.map((request) => {
       const item = itemFor(request);
-      return `<div class="request-preview"><span class="item-emoji">${escapeHtml(item?.emoji || "📦")}</span><span class="request-preview-copy"><strong>${escapeHtml(request.borrower)} · ${escapeHtml(item?.name || "Equipment")}</strong><small>${escapeHtml(request.purpose)} · ${formatDate(request.startDate)}</small></span><button class="table-action" type="button" data-action="approve" data-id="${escapeHtml(request.id)}">Review</button></div>`;
-    }).join("") : `<div class="empty-state"><strong>All caught up.</strong>No requests need a review right now.</div>`;
+      return `<div class="request-preview"><span class="item-emoji">${escapeHtml(item?.emoji || "📦")}</span><span class="request-preview-copy"><strong>${escapeHtml(request.borrower)} · ${escapeHtml(item?.name || "Equipment")}</strong><small>${escapeHtml(request.purpose)} · ${formatDate(request.createdAt)}</small></span><span class="status-pill ${statusClass(request.status)}">${escapeHtml(request.status)}</span>${request.status === "Pending" ? `<button class="table-action" type="button" data-action="approve" data-id="${escapeHtml(request.id)}">Review</button>` : ""}</div>`;
+    }).join("") : `<div class="empty-state"><strong>No borrowing requests yet.</strong>New requests will appear here.</div>`;
     const statusCounts = ["Available", "Borrowed", "Under maintenance", "Damaged", "Reserved"].map((status) => [status, data.equipment.filter((item) => item.status === status).length]);
     get("overview-health").innerHTML = `<div class="health-list">${statusCounts.map(([status, count]) => `<div class="health-line"><span class="health-swatch"></span><span>${status}</span><strong>${count}</strong></div>`).join("")}</div><div class="small text-secondary mt-2">${damaged} item${damaged === 1 ? "" : "s"} need extra care.</div>`;
     const activity = data.activity.length ? data.activity.slice(0, 4) : [
@@ -1006,6 +1012,14 @@
 
     // Asynchronously sync with MySQL database via controllers
     await syncWithServer();
+    if (isAdminPage) {
+      window.setInterval(() => {
+        if (!document.hidden) syncWithServer();
+      }, 15000);
+      document.addEventListener("visibilitychange", () => {
+        if (!document.hidden) syncWithServer();
+      });
+    }
   }
 
   init();
