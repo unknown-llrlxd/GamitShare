@@ -716,12 +716,15 @@
   }
 
   function initMember() {
-    const member = data.people.find((person) => person.email?.toLowerCase() === activeUser.email?.toLowerCase() && person.role === "Member");
-    if (!member) {
-      const firstMember = data.people.find((person) => person.role === "Member");
-      if (firstMember) {
-        setSession(firstMember);
-      }
+    const accountExists = data.people.some((person) => person.email?.toLowerCase() === activeUser.email?.toLowerCase());
+    if (!accountExists) {
+      data.people.push({
+        id: String(activeUser.id || makeId()),
+        name: activeUser.name,
+        email: activeUser.email,
+        role: activeUser.role || "Member",
+        joined: activeUser.joined || offsetDate(0)
+      });
     }
     get("today").textContent = new Intl.DateTimeFormat("en", { weekday: "short", month: "short", day: "numeric" }).format(today);
     updateProfile();
