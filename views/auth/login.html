@@ -92,11 +92,13 @@
           </div>
 
           <label for="signup-confirm">Confirm password</label>
-          <input class="form-control" id="signup-confirm" name="confirm" type="password"
-               autocomplete="new-password" placeholder="Enter your password again"
-               required minlength="8">
-          <button class="password-toggle" type="button"
-                  data-password-toggle="signup-confirm" aria-label="Show password" aria-pressed="false">Show</button>
+          <div class="password-field">
+            <input class="form-control" id="signup-confirm" name="confirm" type="password"
+                   autocomplete="new-password" placeholder="Enter your password again"
+                   required minlength="8">
+            <button class="password-toggle" type="button"
+                    data-password-toggle="signup-confirm" aria-label="Show password" aria-pressed="false">Show</button>
+          </div>
 
           <p class="auth-error" id="signup-error" role="alert" hidden></p>
 
