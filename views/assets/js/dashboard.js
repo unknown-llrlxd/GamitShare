@@ -688,11 +688,10 @@
     });
   }
 
-  function setMemberAccountModal() {
-    const select = get("member-account-select");
-    if (!select) return;
-    select.innerHTML = data.people.map((person) => `<option value="${escapeHtml(person.email)}"${person.email.toLowerCase() === activeUser.email.toLowerCase() ? " selected" : ""}>${escapeHtml(person.name)} · ${escapeHtml(person.role)}</option>`).join("");
-    bootstrap.Modal.getOrCreateInstance(get("account-modal")).show();
+  function showMemberProfileModal() {
+    get("member-profile-name").textContent = activeUser.name;
+    get("member-profile-email").textContent = activeUser.email;
+    bootstrap.Modal.getOrCreateInstance(get("member-profile-modal")).show();
   }
 
   function initAdmin() {
@@ -939,20 +938,9 @@
         document.querySelectorAll("[data-member-filter]").forEach((tab) => tab.classList.toggle("active", tab === button));
         renderMemberRequests();
       }));
-      const openAccount = () => setMemberAccountModal();
-      if (get("member-account-button")) get("member-account-button").addEventListener("click", openAccount);
-      if (get("member-account-top")) get("member-account-top").addEventListener("click", openAccount);
-      if (get("switch-member")) {
-        get("switch-member").addEventListener("click", () => {
-          const person = data.people.find((entry) => entry.email === get("member-account-select").value);
-          if (!person) return;
-          setSession(person);
-          bootstrap.Modal.getOrCreateInstance(get("account-modal")).hide();
-          renderAll();
-          showToast(`Viewing GamitShare as ${person.name}.`);
-          syncWithServer();
-        });
-      }
+      const openProfile = () => showMemberProfileModal();
+      if (get("member-profile-button")) get("member-profile-button").addEventListener("click", openProfile);
+      if (get("member-profile-top")) get("member-profile-top").addEventListener("click", openProfile);
       if (get("member-sign-out")) {
         get("member-sign-out").addEventListener("click", async () => {
           try {
